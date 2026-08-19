@@ -1,0 +1,55 @@
+{
+  "name": "@hridayanp/deck-overlay",
+  "version": "0.1.0",
+  "description": "Bridges deck.gl layers into a @hridayanp/map-container map through a single interleaved MapboxOverlay.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "maplibre",
+    "react",
+    "deck.gl",
+    "webgl",
+    "overlay"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/map-container": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "maplibre-gl": "^4.0.0 || ^5.0.0",
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/mapbox": "^9.0.0"
+  },
+  "devDependencies": {
+    "maplibre-gl": "^5.24.0",
+    "@deck.gl/core": "^9.3.2",
+    "@deck.gl/mapbox": "^9.3.2"
+  }
+}

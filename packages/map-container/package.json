@@ -1,0 +1,64 @@
+{
+  "name": "@hridayanp/map-container",
+  "version": "0.1.0",
+  "description": "Reusable MapLibre GL map container with a React context so layer packages can compose inside it. Knows nothing about the data it renders.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "maplibre",
+    "react",
+    "maplibre",
+    "map",
+    "container"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/geo-utils": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "react-dom": "^18.2.0 || ^19.0.0",
+    "maplibre-gl": "^4.0.0 || ^5.0.0",
+    "pmtiles": "^3.0.0 || ^4.0.0",
+    "@geomatico/maplibre-cog-protocol": "^0.8.0"
+  },
+  "peerDependenciesMeta": {
+    "pmtiles": {
+      "optional": true
+    },
+    "@geomatico/maplibre-cog-protocol": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "pmtiles": "^4.4.1",
+    "@geomatico/maplibre-cog-protocol": "^0.8.0",
+    "maplibre-gl": "^5.24.0"
+  }
+}

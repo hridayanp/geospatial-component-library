@@ -1,0 +1,88 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Introduction" />
+
+# @hridayanp geospatial component library
+
+A set of independently installable React packages for building map
+visualisations. Each one does a single thing, takes all of its data through
+props, and can be used on its own or composed with the others.
+
+There is no application in here. No routes, no store, no API client, no
+authentication, no dashboard. A host application owns data retrieval and
+business logic; these packages own rendering.
+
+## The packages
+
+| Package | What it is |
+| --- | --- |
+| `@hridayanp/map-container` | MapLibre map plus the React context layers attach to |
+| `@hridayanp/raster-layer` | Generic raster visualisation with zero-blink frame updates |
+| `@hridayanp/vector-layer` | Generic GeoJSON layer for every geometry type |
+| `@hridayanp/wind-particle-layer` | GPU-animated flow particles (deck.gl + WeatherLayers GL) |
+| `@hridayanp/geo-legend` | Continuous and classed legends |
+| `@hridayanp/geo-hover` | Feature picking, raster probing and a portalled readout card |
+| `@hridayanp/timeline-control` | Frame playback for animated layers |
+| `@hridayanp/map-controls` | Zoom, reset, fullscreen, opacity, basemap |
+| `@hridayanp/deck-overlay` | Bridges deck.gl layers onto a MapLibre map |
+| `@hridayanp/raster-utils` | Raster maths: stats, colour ramps, colourisation, sampling, GeoTIFF |
+| `@hridayanp/geo-utils` | Bounds, geodesy, GeoJSON helpers — zero dependencies |
+| `@hridayanp/ui` | Shared primitives and the one stylesheet |
+
+## Installing
+
+Install only what you use. Every package declares React, MapLibre and deck.gl
+as peer dependencies, so nothing is bundled twice.
+
+```bash
+npm install @hridayanp/map-container @hridayanp/raster-layer maplibre-gl react react-dom
+```
+
+Import the stylesheet once, anywhere in your application:
+
+```ts
+import 'maplibre-gl/dist/maplibre-gl.css';
+import '@hridayanp/ui/styles.css';
+```
+
+## Composing
+
+Layers attach themselves through context, so composition is just nesting:
+
+```tsx
+<MapContainer center={[92, 25.5]} zoom={6}>
+  <RasterLayer data={raster} colorScale={palette} min={0} max={100} />
+  <VectorLayer data={boundaries} fill={false} stroke="#94a3b8" />
+  <WindParticleLayer data={{ kind: 'field', u, v, width, height, bounds }} />
+
+  <GeoLegend title="Intensity" colorScale={palette} min={0} max={100} placement="bottom-right" />
+  <TimelineControl frames={frames} index={index} onIndexChange={setIndex} placement="bottom-center" />
+  <MapControlBar><ZoomControl /><FullscreenControl /></MapControlBar>
+  <GeoHover raster={raster} unit="mm" />
+</MapContainer>
+```
+
+No package depends on another package's *domain*. The raster layer does not
+know the wind layer exists; the legend works without a map at all.
+
+## Theming
+
+Every colour, radius and font in the library is a CSS custom property. Override
+the variables and everything follows:
+
+```css
+:root {
+  --gcl-accent: #22d3ee;
+  --gcl-radius: 4px;
+  --gcl-font: 'Inter', sans-serif;
+}
+```
+
+Set `data-gcl-theme="light"` or `"dark"` on any ancestor to switch themes; with
+neither, the library follows the operating system preference.
+
+## About the data in these stories
+
+Every field, feature and flow shown here is generated in the browser by
+`stories/demo/data.ts`. It is deterministic and entirely made up. That is
+deliberate: if the docs needed a backend, the library would too.

@@ -1,0 +1,48 @@
+{
+  "name": "@hridayanp/storybook",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Storybook 9 documentation site for the @hridayanp geospatial component library.",
+  "scripts": {
+    "dev": "storybook dev -p 6006",
+    "build": "storybook build -o storybook-static",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf storybook-static .turbo node_modules/.cache"
+  },
+  "dependencies": {
+    "@hridayanp/deck-overlay": "^0.1.0",
+    "@hridayanp/geo-hover": "^0.1.0",
+    "@hridayanp/geo-legend": "^0.1.0",
+    "@hridayanp/geo-utils": "^0.1.0",
+    "@hridayanp/map-container": "^0.1.0",
+    "@hridayanp/map-controls": "^0.1.0",
+    "@hridayanp/raster-layer": "^0.1.0",
+    "@hridayanp/raster-utils": "^0.1.0",
+    "@hridayanp/timeline-control": "^0.1.0",
+    "@hridayanp/ui": "^0.1.0",
+    "@hridayanp/vector-layer": "^0.1.0",
+    "@hridayanp/wind-particle-layer": "^0.1.0"
+  },
+  "devDependencies": {
+    "@deck.gl/core": "^9.3.2",
+    "@deck.gl/extensions": "^9.3.2",
+    "@deck.gl/layers": "^9.3.2",
+    "@deck.gl/mapbox": "^9.3.2",
+    "@storybook/addon-a11y": "^9.1.20",
+    "@storybook/addon-docs": "^9.1.20",
+    "@storybook/react-vite": "^9.1.20",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "chroma-js": "^3.1.2",
+    "geotiff": "^3.0.5",
+    "maplibre-gl": "^5.24.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "storybook": "^9.1.20",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "weatherlayers-gl": "^2026.5.1"
+  }
+}

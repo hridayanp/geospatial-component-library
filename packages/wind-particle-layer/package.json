@@ -1,0 +1,65 @@
+{
+  "name": "@hridayanp/wind-particle-layer",
+  "version": "0.1.0",
+  "description": "GPU-accelerated animated wind particle layer built on deck.gl and WeatherLayers GL. Accepts a UV field, a wind grid or scattered GeoJSON points.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "maplibre",
+    "react",
+    "wind",
+    "particles",
+    "deck.gl",
+    "weatherlayers",
+    "gpu"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/deck-overlay": "^0.1.0",
+    "@hridayanp/geo-utils": "^0.1.0",
+    "@hridayanp/map-container": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "maplibre-gl": "^4.0.0 || ^5.0.0",
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/extensions": "^9.0.0",
+    "@deck.gl/mapbox": "^9.0.0",
+    "weatherlayers-gl": "^2025.0.0 || ^2026.0.0",
+    "@deck.gl/layers": "^9.0.0"
+  },
+  "devDependencies": {
+    "maplibre-gl": "^5.24.0",
+    "@deck.gl/core": "^9.3.2",
+    "@deck.gl/extensions": "^9.3.2",
+    "@deck.gl/mapbox": "^9.3.2",
+    "weatherlayers-gl": "^2026.5.1",
+    "@deck.gl/layers": "^9.3.2"
+  }
+}

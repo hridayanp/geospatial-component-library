@@ -1,0 +1,53 @@
+{
+  "name": "@hridayanp/vector-layer",
+  "version": "0.1.0",
+  "description": "Generic GeoJSON vector layer covering every geometry type, with data-driven styling, filtering and hover/click callbacks.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "maplibre",
+    "react",
+    "geojson",
+    "vector",
+    "maplibre",
+    "layer"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/geo-utils": "^0.1.0",
+    "@hridayanp/map-container": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "maplibre-gl": "^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "maplibre-gl": "^5.24.0"
+  }
+}

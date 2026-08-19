@@ -1,0 +1,41 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/geo-utils"
+    },
+    {
+      "path": "./packages/raster-utils"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/map-container"
+    },
+    {
+      "path": "./packages/deck-overlay"
+    },
+    {
+      "path": "./packages/raster-layer"
+    },
+    {
+      "path": "./packages/vector-layer"
+    },
+    {
+      "path": "./packages/wind-particle-layer"
+    },
+    {
+      "path": "./packages/geo-legend"
+    },
+    {
+      "path": "./packages/geo-hover"
+    },
+    {
+      "path": "./packages/timeline-control"
+    },
+    {
+      "path": "./packages/map-controls"
+    }
+  ]
+}

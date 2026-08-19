@@ -1,0 +1,61 @@
+/* Docs-site chrome only. Nothing here ships in a package. */
+
+.sb-story {
+  font-family: var(--gcl-font);
+}
+
+.demo-map {
+  position: relative;
+  width: 100%;
+  height: 460px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--gcl-border);
+}
+
+.demo-map--tall {
+  height: 620px;
+}
+
+.demo-map--short {
+  height: 320px;
+}
+
+.demo-surface {
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--gcl-border);
+  background: var(--gcl-bg);
+  color: var(--gcl-fg);
+  font-family: var(--gcl-font);
+}
+
+.demo-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--gcl-fg-muted);
+  max-width: 68ch;
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.demo-code {
+  font-family: var(--gcl-font-mono);
+  font-size: 11px;
+  background: var(--gcl-track);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+.demo-readout {
+  font-family: var(--gcl-font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}

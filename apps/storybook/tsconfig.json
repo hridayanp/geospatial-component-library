@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@hridayanp/geo-utils": ["../../packages/geo-utils/src/index.ts"],
+      "@hridayanp/raster-utils": ["../../packages/raster-utils/src/index.ts"],
+      "@hridayanp/ui": ["../../packages/ui/src/index.ts"],
+      "@hridayanp/map-container": ["../../packages/map-container/src/index.ts"],
+      "@hridayanp/deck-overlay": ["../../packages/deck-overlay/src/index.ts"],
+      "@hridayanp/raster-layer": ["../../packages/raster-layer/src/index.ts"],
+      "@hridayanp/vector-layer": ["../../packages/vector-layer/src/index.ts"],
+      "@hridayanp/wind-particle-layer": [
+        "../../packages/wind-particle-layer/src/index.ts"
+      ],
+      "@hridayanp/geo-legend": ["../../packages/geo-legend/src/index.ts"],
+      "@hridayanp/geo-hover": ["../../packages/geo-hover/src/index.ts"],
+      "@hridayanp/timeline-control": [
+        "../../packages/timeline-control/src/index.ts"
+      ],
+      "@hridayanp/map-controls": ["../../packages/map-controls/src/index.ts"]
+    }
+  },
+  "include": [".storybook", "stories"]
+}

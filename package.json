@@ -1,0 +1,36 @@
+{
+  "name": "geospatial-component-library",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A modular, API-independent geospatial React component library published as @hridayanp/* packages.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "packageManager": "npm@10.9.7",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "npm run dev --workspace @hridayanp/storybook",
+    "dev:packages": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean",
+    "storybook": "npm run dev --workspace @hridayanp/storybook",
+    "build-storybook": "npm run build --workspace @hridayanp/storybook",
+    "release:publish": "npm publish --workspaces --access public"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsup": "^8.5.0",
+    "turbo": "^2.5.8",
+    "typescript": "~5.8.3"
+  }
+}
