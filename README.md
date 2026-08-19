@@ -109,15 +109,25 @@ Principles the codebase actually holds to:
 
 ```bash
 npm install
-npm run dev          # opens the component library on :6006 — this is the dev loop
-npm run build        # tsup: ESM + CJS + .d.ts for every package
+npm run dev          # docs site on :3000 + Storybook on :6006 — the dev loop
+npm run build        # tsup: ESM + CJS + .d.ts for every package, then both apps
 npm run typecheck    # tsc --noEmit, strict, across the workspace
 ```
 
-`npm run dev` starts Storybook, which *is* the application here — there is no
-other app to run. `npm run storybook` is an alias for the same thing, and
+`npm run dev` starts both applications in parallel:
+
+| Port | App | What it is |
+| --- | --- | --- |
+| `3000` | `apps/docs` | The documentation site — architecture, guides, per-package reference |
+| `6006` | `apps/storybook` | Interactive examples with live controls |
+
+Run them individually with `npm run dev:docs` and `npm run dev:storybook`. The
+docs site links across to Storybook: `/storybook` redirects to the Storybook
+landing page, and each package page has a button through to its stories.
+
 `npm run dev:packages` runs `tsup --watch` across all twelve packages, for when
-you are consuming them from a separate project.
+you are consuming them from a separate project. You do not need it for normal
+development — both apps alias `@hridayanp/*` to package source.
 
 The workspace is npm workspaces + Turborepo. Each package builds independently
 with `tsup` and is publishable on its own.
@@ -126,10 +136,10 @@ Turbo requires the `packageManager` field in the root `package.json` to know
 which binary to invoke — it is set to npm. Removing it produces
 `Could not resolve workspace`.
 
-Storybook aliases `@hridayanp/*` to package **source**, so stories hot-reload on an
-edit rather than requiring a rebuild, and `npm run storybook` works without
-building the packages first. Consumers still resolve the built entry points
-declared in each `package.json`.
+Both apps alias `@hridayanp/*` to package **source**, so an edit under
+`packages/<name>/src` hot-reloads in each of them rather than requiring a
+rebuild, and neither app needs the packages built first. Consumers still resolve
+the built entry points declared in each `package.json`.
 
 To work on one package in isolation:
 
@@ -142,13 +152,15 @@ npm run build --workspace @hridayanp/raster-layer
 
 ```bash
 npm run build && npm run typecheck
-npm run build --workspace @hridayanp/storybook
-node smoke.mjs    # renders 22 stories in headless Chromium, fails on any error
+node smoke.mjs         # renders 22 Storybook stories in headless Chromium
+node smoke-docs.mjs    # renders the home page and all 28 doc routes
 ```
 
-`smoke.mjs` exists because a type-check proves the code compiles — not that a
-MapLibre map initialises, that deck.gl gets a WebGL context, or that a layer
-attaches without throwing.
+Both smoke tests exist because a type-check proves the code compiles — not that
+a MapLibre map initialises, that deck.gl gets a WebGL context, or that a layer
+attaches without throwing. They fail on any uncaught error, page error or React
+warning; `smoke-docs.mjs` additionally fails on a registered page whose content
+file is missing.
 
 ---
 
@@ -159,7 +171,7 @@ npm run build
 npm publish --workspaces --access public
 ```
 
-`--workspaces` skips `apps/storybook`, which is `private: true`.
+`--workspaces` skips `apps/storybook` and `apps/docs`, both `private: true`.
 
 Local workspace dependencies are plain semver ranges (`^0.1.0`), not
 `workspace:*`, so a published manifest is already correct — nothing is
@@ -172,10 +184,25 @@ explicitly, and exposes only its public surface.
 
 ## Documentation
 
-Storybook is the primary documentation environment. Every public component has
-interactive stories with live controls, covering basic usage, each significant
-prop, edge cases (empty data, NoData rasters, single-frame timelines) and
-performance-sensitive configurations. It is organised by capability:
+Documentation is two applications that link into each other.
+
+**`apps/docs` — the written documentation** (`npm run dev:docs`, port 3000).
+Twenty-eight pages across five sections: Getting Started, Architecture,
+Packages, Guides and Reference. Everything in this README plus repository
+anatomy, the dependency graph, runtime flow, the build system, a page per
+package, publishing, adding a package, verification, invariants and
+troubleshooting. Sidebar navigation, `Cmd`+`K` search, a per-page table of
+contents, light and dark themes, and a live map on the home page rendered by the
+real packages.
+
+Every page that documents something with stories carries a button through to the
+matching Storybook section, and the header has one to Storybook's landing page.
+`/storybook` redirects there directly.
+
+**`apps/storybook` — the interactive documentation** (`npm run dev:storybook`,
+port 6006). Every public component with live controls, covering basic usage,
+each significant prop, edge cases (empty data, NoData rasters, single-frame
+timelines) and performance-sensitive configurations. Organised by capability:
 
 ```
 Geospatial/        Map Container · Raster Layer · Vector Layer · Wind Particle Layer
@@ -184,9 +211,34 @@ Utilities/         Raster Utilities · Geo Utilities
 Composition Examples/
 ```
 
-Every value shown in the docs is generated in the browser by
-`apps/storybook/stories/demo/data.ts`. That is deliberate: if the documentation
-needed a backend, the library would too.
+Every value shown in either app is generated in the browser —
+`apps/storybook/stories/demo/data.ts` and `apps/docs/src/components/HeroMap.tsx`.
+That is deliberate: if the documentation needed a backend, the library would too.
+
+### Building and deploying the docs
+
+```bash
+npm run build          # builds every package, Storybook, then the docs site
+```
+
+`apps/docs`'s build step copies `apps/storybook/storybook-static` into
+`apps/docs/dist/storybook`, so `apps/docs/dist` is a single static directory
+serving the documentation at `/` and Storybook at `/storybook` from one origin.
+Any static host works; the site needs an SPA fallback to `index.html`.
+
+Deploying them to separate origins instead is one environment variable:
+
+```bash
+VITE_STORYBOOK_URL=https://storybook.example.com npm run build:docs
+```
+
+### Adding a documentation page
+
+Two steps. Drop a `.md` file in `apps/docs/src/content/`, and add an entry to
+`PAGES` in `apps/docs/src/site.ts`. The sidebar, router, search, prev/next
+navigation, the `npm install` block and the Storybook link are all derived from
+that entry. In development the app warns in the console about any registered
+page with no content file.
 
 ---
 

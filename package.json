@@ -14,13 +14,18 @@
   },
   "scripts": {
     "start": "npm run dev",
-    "dev": "npm run dev --workspace @hridayanp/storybook",
-    "dev:packages": "turbo run dev",
+    "dev": "turbo run dev --filter @hridayanp/docs --filter @hridayanp/storybook",
+    "dev:docs": "npm run dev --workspace @hridayanp/docs",
+    "dev:storybook": "npm run dev --workspace @hridayanp/storybook",
+    "dev:packages": "turbo run dev --filter './packages/*'",
     "build": "turbo run build",
+    "build:docs": "npm run build --workspace @hridayanp/docs",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
+    "docs": "npm run dev --workspace @hridayanp/docs",
     "storybook": "npm run dev --workspace @hridayanp/storybook",
     "build-storybook": "npm run build --workspace @hridayanp/storybook",
+    "preview": "npm run preview --workspace @hridayanp/docs",
     "release:publish": "npm publish --workspaces --access public"
   },
   "devDependencies": {
