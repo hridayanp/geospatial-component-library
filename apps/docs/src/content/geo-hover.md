@@ -1,22 +1,41 @@
-Pointer inspection for maps: pick vector features, probe raster values, and
-render a readout card that never gets clipped.
+## Purpose
+
+`GeoHover` provides pointer-driven inspection of map content: vector feature
+picking, raster value probing, and a portalled readout card positioned against
+the pointer.
+
+It answers the question a user asks of every thematic map — *what is the value
+here?* — for both feature attributes and continuous raster bands, through one
+component.
 
 ```bash
 npm install @hridayanp/geo-hover @hridayanp/map-container maplibre-gl react react-dom
 ```
 
-Remember the stylesheet: `import '@hridayanp/ui/styles.css'`.
+```ts
+import '@hridayanp/ui/styles.css';
+```
 
-## Two capabilities, independently useful
+## Responsibilities
 
-| Capability | Enabled by | What it does |
+| Concern | Owner |
+| --- | --- |
+| Pointer tracking and hit testing | `GeoHover` |
+| Raster sampling at the pointer position | `GeoHover`, via `raster-utils` |
+| Card positioning, portalling and viewport clamping | `GeoHoverCard` |
+| Deciding which attributes matter and what they mean | Host application, through `sections` |
+| Selection state and click semantics | Host application |
+
+## Two capabilities
+
+| Capability | Enabled by | Mechanism |
 | --- | --- | --- |
-| Feature picking | `layerIds` | `queryRenderedFeatures` scoped to those layer ids |
-| Raster probing | `raster` | Samples the numeric array at the cursor |
+| Feature picking | `layerIds` | `queryRenderedFeatures` scoped to those style layers |
+| Raster probing | `raster` | Samples the in-memory band at the pointer |
 
-Use one, the other, or both. With both, a single hover yields the features under
-the pointer *and* the underlying grid value — which is usually what a real
-readout needs.
+Either may be used alone. With both, a single hover yields the features under
+the pointer **and** the underlying grid value, which is usually what an
+operational readout requires.
 
 ```tsx
 <GeoHover
@@ -27,30 +46,53 @@ readout needs.
     {
       title: 'Reading',
       accentColor: '#38bdf8',
-      rows: [{ label: 'Value', value: state.value, unit: 'mm' }],
+      rows: [{ label: 'Accumulation', value: state.value, unit: 'mm' }],
     },
   ]}
 />
 ```
 
-## Probing reads memory, not the network
+## Data model
 
-The raster your application already handed to
-[`raster-layer`](/docs/raster-layer) is the same array `GeoHover` samples. There
-is no second request, no re-decode and no server round trip — a hover costs an
-index calculation and an array read.
+Raster probing reads the same `RasterData` the application already supplied to
+[`raster-layer`](/docs/raster-layer). No request is issued and no second decode
+occurs; a hover costs an index calculation and an array read.
 
-That is only possible because the host owns the data. A package that fetched its
-own rasters would have to fetch again here.
+This is only possible because the host owns the data. A package that retrieved
+its own rasters would have to retrieve again here.
 
-## `sections` is where domain knowledge lives
+Feature picking operates on geometry already rendered by MapLibre. It returns
+features from the tile-clipped, rendered representation, which is why
+`layerIds` must reference style layers that are currently drawn.
 
-Everything else in this library is domain-agnostic by construction. A readout
-card cannot be: someone has to decide that `wind_speed_kt` is called "Wind" and
-measured in knots.
+### Hover state
 
-`sections` is that one seam. It receives the raw hover state and returns card
-content, and it lives in **your** application:
+```ts
+interface HoverState {
+  x: number;                    // page coordinates, for a fixed-position element
+  y: number;
+  lngLat: LngLat;               // geographic position under the pointer
+  features: GeoJsonFeature[];   // topmost first; empty for a raster-only probe
+  value?: number | null;        // band value, when a raster was supplied
+}
+```
+
+A `null` state means nothing is under the pointer — precisely the shape a
+conditional readout requires:
+
+```tsx
+const hover = useMapHover({ layerIds: ['sites-point'], raster });
+return hover ? <GeoHoverCard x={hover.x} y={hover.y} sections={build(hover)} /> : null;
+```
+
+## Where domain knowledge lives
+
+Every other component in this library is domain-agnostic by construction. A
+readout card cannot be: something must decide that `wind_speed_kt` is labelled
+"Wind speed" and measured in knots.
+
+`sections` is that boundary. It receives the raw hover state and returns card
+content, and it is supplied by the **application**:
 
 ```tsx
 sections={(state) => {
@@ -59,67 +101,78 @@ sections={(state) => {
   return [
     {
       title: String(site.name),
+      subtitle: String(site.district),
       accentColor: site.status === 'alert' ? '#ef4444' : '#38bdf8',
       rows: [
         { label: 'Elevation', value: site.elevation, unit: 'm' },
-        { label: 'Rainfall', value: state.value, unit: 'mm' },
+        { label: 'Accumulation', value: state.value, unit: 'mm' },
       ],
     },
   ];
 }}
 ```
 
-Returning `[]` renders nothing — the natural way to suppress the card for
-features you do not care about.
+Returning an empty array suppresses the card for that hover — the natural way to
+exclude features the application does not describe.
 
-## Hover state
+When `sections` is omitted, a default builder renders a single row from the
+probed raster value, labelled with `title` (default `'Value'`) and suffixed with
+`unit`.
 
-```ts
-interface MapHoverState {
-  x: number;                    // page coordinates, ready for a fixed element
-  y: number;
-  lngLat: [number, number];
-  features: GeoJsonFeature[];   // topmost first; empty when only probing
-  value: number | null;         // null off the raster, or on NoData
-}
-```
+## Configuration
 
-`null` for the whole state means nothing is under the pointer. That is exactly
-the shape a conditional tooltip wants:
+| Prop | Type | Default | Behaviour |
+| --- | --- | --- | --- |
+| `layerIds` | `string[]` | — | Style layers to pick from. **Always scope this** |
+| `raster` | `RasterData \| null` | — | Enables value probing |
+| `sampling` | `'nearest' \| 'bilinear'` | `'nearest'` | See below |
+| `enabled` | `boolean` | `true` | Suspends hovering without unmounting |
+| `sections` | `(state: HoverState) => HoverSection[]` | default builder | Card content |
+| `render` | `(sections, state) => ReactNode` | — | Replaces the card body |
+| `onHoverChange` | `(state: HoverState \| null) => void` | — | For driving other interface state |
+| `title` | `string` | `'Value'` | Used by the default `sections` builder |
+| `unit` | `string` | — | Appended to the probed value by the default builder |
+| `className` | `string` | — | Applied to the card |
+
+### `useMapHover`
 
 ```tsx
-const hover = useMapHover({ layerIds: ['sites-point'], raster });
-return hover ? <GeoHoverCard x={hover.x} y={hover.y} … /> : null;
+import { useMapHover, useRasterProbe } from '@hridayanp/geo-hover';
+
+const hover = useMapHover({
+  layerIds: ['sites-point'],
+  raster,
+  sampling: 'bilinear',
+  enabled: true,
+  cursor: 'pointer',   // null leaves the cursor unchanged
+});
 ```
 
-## Props
+`useRasterProbe` exposes value sampling alone, for readouts that do not need
+feature picking.
 
-| Prop | Default | Notes |
+### `GeoHoverCard`
+
+The card is exported independently and accepts explicit coordinates:
+
+| Prop | Type | Default |
 | --- | --- | --- |
-| `layerIds` | — | **Always scope this.** See performance below |
-| `raster` | — | Any `RasterData`; enables probing |
-| `sampling` | `'nearest'` | Or `'bilinear'` |
-| `sections` | — | `(state) => HoverSection[]` |
-| `enabled` | `true` | Flip to `false` to suspend without unmounting |
-| `offset` | `[14, 14]` | Card offset from the cursor, in pixels |
-| `placement` | `'auto'` | Auto flips near viewport edges |
-| `emptyMessage` | — | Shown when `sections` returns nothing but a value exists |
-| `onHoverChange` | — | `(state \| null) => void`, for driving other UI |
+| `x` / `y` | `number` | — |
+| `sections` | `HoverSection[]` | — |
+| `offset` | `number` | `12` |
+| `render` | `(sections) => ReactNode` | — |
+| `container` | `HTMLElement \| null` | `document.body` |
+| `className` | `string` | — |
 
-## Why the card is portalled
+## Card positioning
 
-`GeoHoverCard` renders straight into `document.body` with `position: fixed`.
+`GeoHoverCard` renders into `document.body` with `position: fixed`.
 
-A tooltip rendered inside the map container is clipped by the first ancestor
-with `overflow: hidden` — and map containers almost always have one. It is the
-single most common failure mode in map UIs, and portalling is the only reliable
-fix.
-
-The card also flips and clamps against the viewport edges, so inspecting a
-feature at the right-hand edge of the screen does not push the card off-screen.
-
-`GeoHoverCard` is exported on its own and works with coordinates you supply, if
-you would rather compute hover state yourself.
+A readout rendered inside the map container is clipped by the first ancestor
+declaring `overflow: hidden` — and map containers almost invariably have one. It
+is the most common defect in map interfaces, and portalling is the only reliable
+remedy. The card additionally flips and clamps against the viewport edges, so
+inspecting a feature near the edge of the screen remains legible.
 
 ## Sampling modes
 
@@ -128,41 +181,45 @@ sampling="nearest"    // default
 sampling="bilinear"
 ```
 
-`'nearest'` returns a value that genuinely **exists in the source**. That is the
-right choice for classed data (a land-cover code between two classes is
-meaningless) and for readouts where a user expects to see a real measurement.
+`'nearest'` returns a value that **exists in the source grid**. This is correct
+for classified data — a land-cover code interpolated between two classes is
+meaningless — and for readouts where the user expects an actual measurement.
 
-`'bilinear'` interpolates between the four surrounding cells, which matches what
-the smoothed rendering actually shows. Pick it when "the number should agree with
-the colour under my cursor" matters more than "the number should be a real
-observation".
+`'bilinear'` interpolates the four surrounding cells, matching what the smoothed
+rendering displays. Select it when agreement between the reported number and the
+colour under the pointer matters more than fidelity to a discrete observation.
 
-## Performance
+Positions outside the raster extent, and cells holding NoData, return
+`value: null` rather than raising — hovering off the data is normal user
+behaviour.
 
-`queryRenderedFeatures` runs on **every pointer move**. Unscoped, it walks every
-rendered layer on the map, which on a basemap with labels and roads is
-noticeably expensive — this is the difference between a smooth hover and a
-janky one.
+## Performance considerations
+
+`queryRenderedFeatures` executes on **every pointer-move event**. Unscoped, it
+traverses every rendered style layer on the map, including the entire basemap.
+This is the difference between a responsive readout and a visibly janky one.
 
 ```tsx
-<GeoHover layerIds={['sites-hit']} />          {/* good */}
-<GeoHover />                                    {/* probing only — also fine */}
+<GeoHover layerIds={['sites-hit']} />   // scoped
+<GeoHover raster={raster} />            // probing only — no picking cost
 ```
 
-Raster probing is a plain array read and costs effectively nothing.
+Raster probing is an array read and is negligible by comparison.
 
-Pair with `hitRadius` on [`vector-layer`](/docs/vector-layer) so small symbols
-are pickable without being drawn larger:
+Pair with `hitRadius` on [`vector-layer`](/docs/vector-layer) so that small
+symbols are acquirable without being drawn larger:
 
 ```tsx
 <VectorLayer id="sites" data={points} hitRadius={14} />
 <GeoHover layerIds={['sites-hit']} />
 ```
 
-## Limitations
+## Integration boundaries
 
-- Hover only. Click handling belongs on the layer that owns the feature —
-  `VectorLayer` has `onClick`.
-- One raster at a time. Probing several grids means several `useMapHover` calls,
-  or sampling with [`raster-utils`](/docs/raster-utils) directly.
-- Touch devices have no hover. Drive the card from a tap on mobile.
+- Hover only. Click handling belongs to the layer that owns the feature —
+  `VectorLayer` exposes `onClick`.
+- One raster per instance. Probing several bands requires several `useMapHover`
+  calls, or direct use of `sampleRaster` from
+  [`raster-utils`](/docs/raster-utils).
+- Pointer devices only. Touch input has no hover state; drive the card from a
+  tap on mobile using `VectorLayer`'s `onClick` and `GeoHoverCard` directly.

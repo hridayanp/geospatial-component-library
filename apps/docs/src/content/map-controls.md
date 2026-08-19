@@ -1,13 +1,16 @@
-The genuinely reusable map controls — zoom, reset view, fullscreen, opacity and
-basemap switching — and deliberately nothing else.
+## Purpose
+
+`map-controls` provides the view-state and presentation controls that are common
+to any map: zoom, view reset, fullscreen, layer opacity and basemap selection,
+together with a bar that docks and groups them.
 
 ```bash
 npm install @hridayanp/map-controls @hridayanp/map-container maplibre-gl react
 ```
 
-Remember the stylesheet: `import '@hridayanp/ui/styles.css'`.
-
-## Usage
+```ts
+import '@hridayanp/ui/styles.css';
+```
 
 ```tsx
 <MapContainer center={[92, 25.5]} zoom={6}>
@@ -18,130 +21,144 @@ Remember the stylesheet: `import '@hridayanp/ui/styles.css'`.
   </MapControlBar>
 
   <MapControlBar placement="bottom-left">
-    <OpacityControl value={opacity} onChange={setOpacity} />
-    <BasemapSwitcher value={basemap} onChange={setBasemap} options={basemaps} />
+    <OpacityControl value={opacity} onChange={setOpacity} label="Precipitation" />
+    <BasemapSwitcher value={basemapId} onChange={setBasemap} options={basemaps} />
   </MapControlBar>
 </MapContainer>
 ```
 
-## What is here, and what is not
+## Scope
 
-Here: things that are true of **any** map. Zooming, framing an extent, going
-fullscreen, dimming a layer, changing the basemap.
+The package covers operations that are properties of **a map**: changing the
+view, framing an extent, expanding the viewport, attenuating a layer, exchanging
+the basemap.
 
-Not here: layer pickers, site selectors, model switchers, alert panels, date
-range choosers. Those encode what an *application* is, not what a *map* does. A
-component library that shipped them would be shipping someone else's product,
-and every consumer would immediately need to fight the assumptions baked into
-them.
+It does not cover layer pickers, site selectors, model-run switchers, advisory
+panels or date-range choosers. Those express an application's information
+architecture rather than a cartographic capability, and a library shipping them
+would embed one product's assumptions in every consumer.
 
-If you need a layer picker, build it from [`ui`](/docs/ui) primitives inside a
-`MapControlBar` — it accepts arbitrary children.
+`MapControlBar` accepts arbitrary children, so an application-specific control
+composed from [`ui`](/docs/ui) primitives sits alongside the shipped ones and
+inherits the same visual language.
 
 ## Components
 
 ### `MapControlBar`
 
-Docks and groups controls. The bar itself is transparent to pointer events, so
-the map stays draggable in the gaps **between** control groups; only the buttons
+Docks and groups controls. The bar is transparent to pointer events, so map
+panning remains available between control groups; only the controls themselves
 capture the pointer.
 
-```tsx
-<MapControlBar placement="top-right" direction="vertical" gap={8}>
-```
-
-| Prop | Default | Notes |
+| Prop | Type | Default |
 | --- | --- | --- |
-| `placement` | `'top-right'` | Any of the eight dock positions |
-| `direction` | `'vertical'` | Or `'horizontal'` |
-| `gap` | `6` | Pixels between children |
-| `offset` | `12` | Distance from the map edge |
+| `placement` | `PanelPlacement` | `'top-right'` |
+| `orientation` | `'vertical' \| 'horizontal'` | `'vertical'` |
+| `className` / `style` | | — |
+| `children` | `ReactNode` | — |
 
 ### `ZoomControl`
 
-Reads the map's own `minZoom`/`maxZoom` and **disables itself at the limits**
-rather than presenting a button that clicks with no effect. A disabled control
-is honest; a dead one looks broken.
+Tracks the map's zoom and **disables each button at the corresponding limit**
+rather than presenting a control that produces no effect. Zoom changes are eased
+over 200 ms.
 
-```tsx
-<ZoomControl step={1} showReset />
-```
+| Prop | Type | Default |
+| --- | --- | --- |
+| `step` | `number` | `1` |
+| `className` | `string` | — |
 
 ### `ResetViewControl`
 
-Takes either a `view` or a `bounds`:
+Restores a defined view. `bounds` takes precedence over `view`; with neither, the
+control restores the camera the map was mounted with.
+
+| Prop | Type | Default |
+| --- | --- | --- |
+| `view` | `ViewState` | — |
+| `bounds` | `Bounds` | — |
+| `padding` | `number` | `24` |
+| `label` | `string` | — |
+| `className` | `string` | — |
 
 ```tsx
 <ResetViewControl view={{ center: [92, 25.5], zoom: 6 }} />
 <ResetViewControl bounds={[88, 22, 96, 29]} padding={40} />
 ```
 
-With neither, it restores the camera the map was first mounted with.
-
 ### `FullscreenControl`
 
-Expands the map container by default — not the document — so surrounding chrome
-you *want* to keep (a legend, a timeline) goes fullscreen with it.
+Expands the map's own container by default rather than the document, so overlays
+that belong to the map — legend, timeline, control bars — expand with it. The
+control calls `map.resize()` **after** the transition completes; resizing during
+the CSS transition captures an intermediate size and leaves the canvas
+distorted.
 
-It calls `map.resize()` **after** the transition completes. Resizing during the
-CSS transition captures an intermediate size and leaves the canvas stretched.
-
-```tsx
-<FullscreenControl target={() => document.getElementById('app')!} />
-```
+| Prop | Type | Default |
+| --- | --- | --- |
+| `target` | `HTMLElement \| null` | the map container |
+| `className` | `string` | — |
 
 ### `OpacityControl`
 
-```tsx
-<OpacityControl value={opacity} onChange={setOpacity} label="Rainfall" />
-<OpacityControl value={opacity} onChange={setOpacity} inline />
-```
+| Prop | Type | Default |
+| --- | --- | --- |
+| `value` | `number` | — (required) |
+| `onChange` | `(value: number) => void` | — (required) |
+| `label` | `string` | `'Opacity'` |
+| `inline` | `boolean` | `false` |
+| `className` | `string` | — |
 
-A popover by default; `inline` renders a bare slider suitable for embedding in a
-legend footer.
+`inline` renders a bare slider suitable for embedding in a legend footer;
+otherwise the slider is presented behind a popover trigger.
 
 ### `BasemapSwitcher`
 
+| Prop | Type | Default |
+| --- | --- | --- |
+| `options` | `BasemapOption[]` | — (required) |
+| `value` | `string` | — (required) — the active option's `id` |
+| `onChange` | `(id: string, style: StyleSpecification \| string) => void` | — (required) |
+| `applyToMap` | `boolean` | `false` |
+| `className` | `string` | — |
+
 ```tsx
-<BasemapSwitcher
-  value={basemap}
-  onChange={setBasemap}
-  options={[
-    { id: 'dark',  label: 'Dark',  style: createBlankStyle('#0b1220') },
-    { id: 'terrain', label: 'Terrain', style: terrainStyle },
-  ]}
-/>
+const basemaps: BasemapOption[] = [
+  { id: 'dark',    label: 'Dark',    style: createBlankStyle('#0b1220') },
+  { id: 'terrain', label: 'Terrain', style: terrainStyle },
+];
+
+<BasemapSwitcher value={basemapId} onChange={setBasemap} options={basemaps} />
 ```
 
-`applyToMap` is **optional and off by default**. Leave it off when the host
-passes `mapStyle` to `MapContainer` itself — otherwise the switcher calls
-`setStyle` and the controlled prop calls it again, and the two fight over the
-map on every change.
+> **Warning:** `applyToMap` defaults to `false` deliberately. When the host
+> passes `mapStyle` to `MapContainer`, enabling it means the switcher calls
+> `setStyle` and the controlled prop calls it again — two writers contending for
+> the same map state. Enable it only for an uncontrolled map where the switcher
+> is the sole owner of the style.
 
-Turn it on only for an uncontrolled map where the switcher is the sole owner of
-the style.
+## State ownership
 
-## Controlled by design
+`OpacityControl` and `BasemapSwitcher` are fully controlled.
 
-`OpacityControl` and `BasemapSwitcher` have no internal state.
+Layer opacity almost always belongs to the layer the host already manages — the
+same value is passed to `<RasterLayer opacity={…} />`. A control holding an
+internal copy would diverge from the layer the moment anything else modified it:
+a preset, a URL parameter, a reset action.
 
-Opacity almost always belongs to the layer the host already manages — the same
-number is passed to `<RasterLayer opacity={…} />`. A control holding its own copy
-would disagree with the layer the moment anything else changed it (a preset, a
-URL parameter, a reset button).
+`ZoomControl` and `FullscreenControl` are different: their state lives on the
+map instance and in the browser respectively, so there is nothing for the host
+to own.
 
-`ZoomControl` and `FullscreenControl` are different: their state lives on the map
-and the browser respectively, so there is nothing for the host to own.
+## Basemap reload and layer recovery
 
-## Basemap switching and your layers
+Exchanging a style **discards every source and style layer added on top of it**.
+This is MapLibre behaviour, not a choice made by this library.
 
-Swapping a style **discards every source and layer added on top of it**. That is
-MapLibre's behaviour, not a choice this library makes.
-
-Every layer package here re-attaches automatically on the next `styledata` event,
-via the `styleVersion` counter described in
-[`map-container`](/docs/map-container#why-styleversion-exists). Anything you added
-to the map by hand has to do the same:
+Every layer package here re-registers automatically on the next `styledata`
+event, through the `styleVersion` counter described in
+[`map-container`](/docs/map-container#styleversion). Sources and layers added
+directly by the host must implement the same recovery:
 
 ```tsx
 const { map, ready, styleVersion } = useMap();
@@ -151,20 +168,20 @@ useEffect(() => {
   map.addSource('mine', { /* … */ });
   map.addLayer({ /* … */ });
   return () => { /* remove layers, then the source */ };
-}, [map, ready, styleVersion]);   // ← styleVersion is the important one
+}, [map, ready, styleVersion]);   // styleVersion is the operative dependency
 ```
 
-## Building your own control
+## Extending the control set
 
 ```tsx
 import { MapControlBar } from '@hridayanp/map-controls';
-import { Button, Panel } from '@hridayanp/ui';
+import { Button } from '@hridayanp/ui';
 import { useMap } from '@hridayanp/map-container';
 
 function NorthUpControl() {
   const { map } = useMap();
   return (
-    <Button variant="ghost" onClick={() => map?.easeTo({ bearing: 0 })}>
+    <Button aria-label="Reset bearing" onClick={() => map?.easeTo({ bearing: 0 })}>
       N
     </Button>
   );
@@ -176,5 +193,13 @@ function NorthUpControl() {
 </MapControlBar>
 ```
 
-Using [`ui`](/docs/ui) primitives is what keeps a custom control visually
-identical to the shipped ones.
+Building from [`ui`](/docs/ui) primitives is what keeps an application-specific
+control visually indistinguishable from the shipped ones.
+
+## Accessibility
+
+Controls carry accessible names and are reachable by keyboard. Tooltips,
+popovers and selects are Radix primitives, so focus management, escape handling
+and ARIA wiring are correct without re-implementation. Disabled states are
+communicated through the `disabled` attribute rather than by visual treatment
+alone.

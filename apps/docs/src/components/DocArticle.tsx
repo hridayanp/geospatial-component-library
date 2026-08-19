@@ -53,8 +53,9 @@ export function DocArticle({ page }: { page: DocPage }) {
     return (
       <main className="docs-main">
         <article className="docs-article">
-          <h1>Page not written yet</h1>
+          <h1>Content unavailable</h1>
           <p className="docs-lede">
+            This page is registered in <code>src/site.ts</code> but{' '}
             <code>src/content/{page.slug}.md</code> does not exist.
           </p>
         </article>
@@ -82,7 +83,7 @@ export function DocArticle({ page }: { page: DocPage }) {
                   target="_blank"
                   rel="noreferrer noopener"
                 >
-                  Live examples in Storybook
+                  Interactive examples
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
                     <path d="M7 17 17 7M9 7h8v8" />
                   </svg>

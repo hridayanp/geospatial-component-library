@@ -1,13 +1,18 @@
-GPU-accelerated flow particles for any vector field — wind, ocean currents,
-drift, migration. Built on deck.gl and WeatherLayers GL.
+## Purpose
+
+`WindParticleLayer` visualises a two-dimensional vector field as GPU-advected
+flow particles — atmospheric wind, ocean currents, drift trajectories, migration
+vectors.
+
+Rendering is performed by WeatherLayers GL through deck.gl, composited into the
+MapLibre render pass. The package accepts a field through props and produces
+animation; it performs no retrieval.
 
 ```bash
 npm install @hridayanp/wind-particle-layer @hridayanp/map-container \
   maplibre-gl weatherlayers-gl \
   @deck.gl/core @deck.gl/mapbox @deck.gl/extensions @deck.gl/layers
 ```
-
-## Usage
 
 ```tsx
 <MapContainer center={[92, 25.5]} zoom={6}>
@@ -21,189 +26,228 @@ npm install @hridayanp/wind-particle-layer @hridayanp/map-container \
 </MapContainer>
 ```
 
-**The package renders; it never retrieves.** There is no fetching, no polling
-and no data source of any kind inside it.
+## Responsibilities
 
-## Data formats
+| Concern | Owner |
+| --- | --- |
+| Vector-field normalisation and UV texture encoding | `WindParticleLayer` |
+| Rasterisation of scattered observations onto a grid | `WindParticleLayer` |
+| deck.gl layer construction and registration | `WindParticleLayer` |
+| GPU advection and trail rendering | WeatherLayers GL |
+| Field retrieval, temporal alignment, unit conversion | Host application |
+| Direction convention of the source data | Host application, declared through props |
 
-Three shapes converge on one thing: a UV-encoded RGBA texture.
+## Data model
 
-### A velocity grid — the canonical form
+Three input forms converge on one representation: a UV-encoded RGBA texture.
+
+### Velocity grid
 
 ```tsx
 data={{
   kind: 'field',
-  u,        // eastward components, row-major, north row first
+  u,        // eastward components, row-major, northern row first
   v,        // northward components
   width, height,
-  bounds,   // [west, south, east, north]
-  noData,   // optional sentinel
+  bounds,   // [west, south, east, north], EPSG:4326
+  noData,   // optional sentinel; cells equal to it draw no particles
 }}
 ```
 
-No resampling needed; this encodes directly.
+The canonical form. Components are in the same unit as `maxSpeed` and encode
+directly with no resampling.
 
 ### Scattered observations
 
 ```tsx
 data={{
   kind: 'points',
-  data: geojson,                  // features with speed + direction
+  data: geojson,                  // point features carrying speed and direction
+  speedProperty: 'wind_speed_kt', // optional; a default alias list is used
+  directionProperty: 'wind_dir_deg',
   directionConvention: 'from',    // or 'towards'
   frameKey: timestamp,            // avoids rebuilding an unchanged field
 }}
 ```
 
-Properties are read with a wide alias list — `wind_speed_kt`, `speed`, `ws`,
-`wind_dir_deg`, `direction`, `wind_dir_deg_compass` and more — and compass names
-are parsed in every spelling real feeds use (`SSW`, `South-Southwest`,
-`SOUTHSOUTHWEST`). Explicit `u`/`v` properties win when present, since they
-carry no convention ambiguity.
+Property names are resolved through a wide alias list — `speed`, `wind_speed`,
+`wind_speed_kt`, `ws`, `value` for magnitude; `direction`, `wind_dir_deg`, `dir`
+for bearing — and compass bearings are parsed in every spelling operational
+feeds use (`SSW`, `South-Southwest`, `SOUTHSOUTHWEST`, `247.5°`). Explicit `u`
+and `v` properties take precedence when present, since they carry no convention
+ambiguity.
 
-### A pre-encoded UV image
+### Pre-encoded UV image
 
 ```tsx
 data={{ kind: 'image', url, bounds, imageUnscale: [-60, 60] }}
 ```
 
-## How it works
+For fields encoded by an upstream processing pipeline. The encoding must match
+the WeatherLayers `imageUnscale` contract described below.
+
+## Rendering model
 
 Velocities are packed into an RGBA texture and uploaded once:
 
 ```text
-R = (u + maxSpeed) / (2 * maxSpeed) * 255    eastward
-G = (v + maxSpeed) / (2 * maxSpeed) * 255    northward
+R = (u + maxSpeed) / (2 * maxSpeed) * 255    eastward component
+G = (v + maxSpeed) / (2 * maxSpeed) * 255    northward component
 B = 0
 A = 255 where data exists, 0 elsewhere
 ```
 
-From then on the GPU advects every particle and reconstructs its speed as
-`sqrt(u² + v²)` to sample the colour ramp. **The CPU does nothing per frame** —
-which is why 5,000 particles animate as cheaply as 500.
+From that point the GPU advects every particle and reconstructs speed as
+`sqrt(u² + v²)` to sample the colour ramp. **No per-frame CPU work occurs**,
+which is why 5,000 particles cost approximately what 500 cost.
 
-`imageUnscale: [-maxSpeed, maxSpeed]` tells the shader how to decode the bytes
-back to real velocities.
+`imageUnscale: [-maxSpeed, maxSpeed]` informs the shader how to decode the bytes
+back to physical velocities.
 
-> **Warning:** Alpha must be a hard `255`, never partial. WeatherLayers treats
-> anything less as missing data and draws no particles there. This is the most
-> common mistake when producing UV textures in an external pipeline.
+> **Warning:** Alpha must be exactly `255`, never partial. WeatherLayers treats
+> any lower value as absent data and renders no particles there. Anti-aliasing
+> or a premultiplied-alpha step in an external encoding pipeline is the usual
+> cause of an unexplained gap in the field.
+
+### Rasterising scattered observations
+
+Two properties separate a continuous flow field from a scatter of isolated
+vectors:
+
+**Grid resolution is inferred from the observations.** The median gap between
+sorted unique coordinates determines the step, so the texture matches the real
+resolution of the data rather than an arbitrary constant.
+
+**Gaps are filled with a distance-weighted neighbour average** — four passes,
+orthogonal neighbours weighted `1`, diagonals `1/√2`. Nearest-neighbour copying
+instead leaves a visible seam where two filled regions meet, which reads on
+screen as the flow discontinuously jumping between vectors.
+
+Generated textures are capped at 512 px on the longest edge
+(`MAX_TEXTURE_SIZE`).
 
 ## Direction convention
 
-Meteorological data reports where wind comes **from**. That is the default.
+Meteorological data reports the bearing the flow originates **from**. Ocean
+current and drift data conventionally report the bearing of travel.
 
 ```tsx
-directionConvention: 'from'      // default — particles travel the opposite way
-directionConvention: 'towards'   // the value IS the direction of travel
+directionConvention: 'from'      // default; particles travel the reciprocal bearing
+directionConvention: 'towards'   // the value is the direction of travel
 ```
 
-If your particles flow backwards, this is the first prop to check. The
-[Storybook story](/docs/composition) shows both side by side with identical
-data.
+An inverted flow field is almost always this prop. The
+[composition examples](/docs/composition) render both conventions against
+identical data.
 
-## Rasterising scattered points
+## Configuration
 
-Two details separate "reads as weather" from "reads as a scatter plot":
+| Prop | Type | Default | Behaviour |
+| --- | --- | --- | --- |
+| `data` | `WindParticleData \| null` | — | `null` renders nothing |
+| `id` | `string` | `'gcl-wind-particles'` | deck.gl layer identifier; must be unique |
+| `visible` | `boolean` | `true` | Stops rendering without unmounting |
+| `particleCount` | `number` | `2500` | Total particles; the dominant cost |
+| `maxAge` | `number` | `45` | Trail length in frames |
+| `speedFactor` | `number` | `6` | Advection speed multiplier |
+| `width` | `number` | `1.4` | Particle stroke width in pixels |
+| `opacity` | `number` | `0.9` | Layer opacity |
+| `maxSpeed` | `number` | `60` | Full-scale speed; higher magnitudes are clamped without rotating the vector |
+| `color` | `[r, g, b, a]` | — | A single colour for every particle; overrides `colors` |
+| `colors` | `string[]` | — | Ramp applied by reconstructed speed |
+| `palette` | `string \| Array<[number, string]>` | — | Explicit value/colour stops |
+| `imageInterpolation` | WeatherLayers enum | `CUBIC` | `NEAREST` is point-exact but visibly stepped |
+| `imageSmoothing` | `number` | `0.6` | Additional pre-blur, in cells |
+| `transitionMs` | `number` | `900` | Cross-fade duration when the field changes; `0` disables |
+| `maxZoom` | `number \| null` | `null` | Stops drawing above this zoom |
+| `beforeId` | `string` | — | Inserts deck's draw call below a MapLibre style layer |
+| `interleaved` | `boolean` | `true` | Draws inside the MapLibre render pass |
+| `onError` | `(error: Error) => void` | — | Field construction failure |
 
-**Grid size comes from the data's own spacing.** The median gap between sorted
-unique coordinates infers the step, so the texture matches the observations'
-real resolution rather than an arbitrary constant.
+## Temporal transitions
 
-**Gaps take a distance-weighted average of neighbours** — four passes,
-orthogonal neighbours weighted `1`, diagonals `1/√2`. Copying the nearest cell
-instead leaves a visible seam where two filled patches meet, which on screen
-reads as the flow "jumping" between vectors.
-
-Generated textures are capped at 512 px on the longest edge.
-
-## Props
-
-| Prop | Default | Notes |
-| --- | --- | --- |
-| `data` | — | `null` renders nothing |
-| `visible` | `true` | |
-| `particleCount` | `2500` | The dominant cost |
-| `maxAge` | `45` | Trail length in frames |
-| `speedFactor` | `6` | Speed multiplier |
-| `width` | `1.4` | Stroke width in pixels |
-| `opacity` | `0.9` | |
-| `maxSpeed` | `60` | Full scale; faster values are clamped **without rotating the vector** |
-| `color` | — | A single `[r, g, b, a]` tuple; overrides `colors` |
-| `colors` | — | Ramp applied by reconstructed speed |
-| `palette` | — | Explicit `[value, colour]` stops |
-| `imageInterpolation` | `CUBIC` | `NEAREST` gives point-exact but visibly stepped motion |
-| `imageSmoothing` | `0.6` | Extra pre-blur, in cells |
-| `transitionMs` | `900` | Cross-fade when the field changes |
-| `maxZoom` | `null` | Stop drawing above this zoom |
-| `beforeId` | — | Insert deck's draw call below a MapLibre layer |
-| `interleaved` | `true` | Draw inside the MapLibre pass |
-
-## Transitions
-
-When the field changes, the old and new textures are blended on the GPU over
-`transitionMs`. Particles keep their positions and trails **through** a timeline
-step instead of restarting — which is what makes playback look continuous rather
-than stuttery.
+When the field changes, the previous and current textures are blended on the GPU
+over `transitionMs`. Particles retain their positions and trails **through** a
+timeline step rather than restarting, which is what makes sequential playback
+read as continuous motion.
 
 ```tsx
 <WindParticleLayer data={fields[index]} transitionMs={1200} />
 ```
 
-Blending only applies when consecutive grids have **identical dimensions**;
-otherwise the two would be sampled at mismatched cells, so the new field
-replaces the old outright.
+Blending is applied only when consecutive grids have **identical dimensions**;
+otherwise the two would be sampled at mismatched cells, and the new field
+replaces the previous one outright.
 
 The fade is driven by a `requestAnimationFrame` loop with smoothstep easing that
-**stops running once the blend completes** — the steady state costs nothing per
-frame. Particle motion itself is GPU-side regardless.
+**terminates once the blend completes**, so the steady state costs nothing per
+frame. Particle advection itself is GPU-resident regardless.
 
-## Sharing one deck instance
+## Sharing a deck.gl instance
 
 ```tsx
 import { DeckOverlay } from '@hridayanp/deck-overlay';
 
 <DeckOverlay>
   <WindParticleLayer id="surface" data={surface} />
-  <WindParticleLayer id="upper" data={upper} />
+  <WindParticleLayer id="upper"   data={upper} />
 </DeckOverlay>
 ```
 
-Without the wrapper each layer creates its own `MapboxOverlay` — a separate
+Without the wrapper each layer provisions its own `MapboxOverlay` — a separate
 deck.gl instance, animation loop and picking pass. See
 [`deck-overlay`](/docs/deck-overlay).
 
-## The hook
+## The layer hook
 
 ```tsx
 import { useWindParticleLayers } from '@hridayanp/wind-particle-layer';
 
 const layers = useWindParticleLayers({ data, particleCount, colors });
-// deck.gl Layer[] — drop into your own deck instance
+// deck.gl Layer[], for an application that manages its own deck instance
 ```
 
-## Utilities
+## Field construction utilities
 
 ```ts
 import {
-  extractWindVectors,   // GeoJSON → { lon, lat, speed, direction, u, v }[]
-  pointsToTexture,      // scattered vectors → UV texture
-  fieldToTexture,       // u/v grid → UV texture
-  encodeUVTexture,      // raw arrays → UV texture
+  extractWindVectors,   // GeoJSON → WindVector[] { lon, lat, speed, direction, u, v }
+  pointsToTexture,      // scattered vectors → WindTextureSource
+  fieldToTexture,       // u/v grid → WindTextureSource
+  encodeUVTexture,      // raw component arrays → WindTextureSource
+  featureToWindVector,  // a single feature → WindVector | null
+  MAX_TEXTURE_SIZE,
+  DEFAULT_MAX_SPEED,
+  DEFAULT_PARTICLE_CONFIG,
 } from '@hridayanp/wind-particle-layer';
 ```
 
-## Performance
+`WindTextureSource` is `{ url, bounds, imageUnscale, key }` — the exact shape the
+`kind: 'image'` input accepts, so a field encoded in a worker can be handed
+straight back to the layer.
 
-- `particleCount` dominates. 2,000–3,000 reads well at continental scale; past
-  ~10,000 the field becomes visual noise before it becomes slow.
-- `maxAge` multiplies trail geometry — long trails on many particles are the
-  second cost.
-- Generated textures are capped at 512 px per edge.
+## Performance considerations
 
-## Limitations
+- `particleCount` dominates. 2,000–3,000 reads well at continental scale; beyond
+  roughly 10,000 the field becomes visually saturated before it becomes slow.
+- `maxAge` multiplies trail geometry and is the second cost after particle
+  count.
+- Generated textures are capped at 512 px per edge, bounding both upload cost
+  and GPU memory.
+- `interleaved={false}` avoids a class of WebGL state interaction at the cost of
+  draw-order control.
 
-- **Requires WebGL2.** There is no canvas fallback.
-- 8-bit UV encoding gives a quantisation step of `2 × maxSpeed / 255` — about
-  0.47 kt at the default scale.
-- Particles are clipped to `±85.05°` latitude, otherwise they wrap past the
-  poles and smear across the top and bottom of the map.
+## Geospatial considerations
+
+- **WebGL2 is required.** There is no software fallback.
+- `bounds` is EPSG:4326 `[west, south, east, north]` and describes the grid's
+  outer edges. No reprojection is performed.
+- 8-bit UV encoding gives a quantisation step of `2 × maxSpeed / 255` —
+  approximately 0.47 units at the default scale. Reduce `maxSpeed` to the actual
+  data range to recover precision.
+- Particles are clipped to ±85.05° latitude, the Web Mercator limit; without the
+  clip they wrap past the poles and smear across the top and bottom of the
+  viewport.
+- `u` and `v` are grid-relative eastward and northward components. Fields
+  supplied in a rotated or projected frame must be rotated to geographic
+  components upstream.

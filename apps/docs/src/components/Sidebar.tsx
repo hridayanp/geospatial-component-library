@@ -44,7 +44,7 @@ export function Sidebar({
         ))}
 
         <section className="docs-sidebar__group">
-          <h2 className="docs-sidebar__heading">Live examples</h2>
+          <h2 className="docs-sidebar__heading">Interactive examples</h2>
           <ul className="docs-sidebar__list">
             <li>
               <a

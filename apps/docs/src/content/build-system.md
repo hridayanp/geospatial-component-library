@@ -1,6 +1,7 @@
-Turborepo orchestrates, tsup compiles, and the `exports` map seals the result.
+Turborepo orchestrates the task graph, tsup compiles each package, and the
+`exports` map defines the published surface.
 
-## The task graph
+## Task graph
 
 ```jsonc
 // turbo.json
@@ -8,25 +9,39 @@ Turborepo orchestrates, tsup compiles, and the `exports` map seals the result.
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsup.config.ts", "tsconfig.json", "package.json"],
+      "inputs": [
+        "src/**", "stories/**", ".storybook/**", "scripts/**",
+        "index.html", "tsup.config.ts", "vite.config.ts",
+        "tsconfig.json", "package.json"
+      ],
       "outputs": ["dist/**", "storybook-static/**"]
     },
-    "typecheck": { "dependsOn": ["^build"], "inputs": ["src/**", "tsconfig.json"] },
-    "dev":       { "cache": false, "persistent": true },
-    "clean":     { "cache": false }
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "stories/**", ".storybook/**",
+                 "vite.config.ts", "tsconfig.json", "package.json"]
+    },
+    "dev":   { "cache": false, "persistent": true },
+    "clean": { "cache": false }
   }
 }
 ```
 
-`^build` reads each package's `dependencies` to derive order. You never maintain
-a build list — adding a package with correct dependencies slots it in.
+`^build` resolves ordering from each package's `dependencies` field. No build
+list is maintained; a package with correctly declared dependencies is inserted
+into the graph automatically.
 
-`inputs` and `outputs` drive content-addressed caching. Change a README and
-Turbo replays the cached build in about 50 ms and prints `>>> FULL TURBO`.
-Change a source file and it rebuilds that package and everything downstream of
-it, and nothing else.
+`inputs` and `outputs` drive content-addressed caching. A task whose declared
+inputs are unchanged replays from cache in tens of milliseconds and reports
+`FULL TURBO`. A source change rebuilds that package and its dependents, and
+nothing else.
 
-## Per-package tsup config
+> **Warning:** The input globs must enumerate every file that affects a task's
+> output. The applications keep stories in `stories/`, Storybook configuration
+> in `.storybook/`, and build scripts in `scripts/` — none of which are matched
+> by `src/**`. An omitted glob produces a cache hit on stale output.
+
+## Package compilation
 
 ```ts
 export default defineConfig({
@@ -43,37 +58,37 @@ export default defineConfig({
 });
 ```
 
-> **Warning:** `external` must list **every peer and every workspace
-> dependency**. Miss one and tsup inlines it — you would ship four copies of the
-> compass table, and the shared-instance guarantee for React or MapLibre would
-> be gone.
+> **Warning:** `external` must enumerate **every peer dependency and every
+> workspace dependency**. An omitted entry causes tsup to inline that module —
+> which would publish four copies of the compass table, and would void the
+> single-instance guarantee for React, MapLibre or deck.gl.
 
-`dts: true` runs a separate rollup pass that flattens all the types into one
-`.d.ts`, so a consumer gets a single declaration file rather than a tree of
-internal ones.
+`dts: true` runs a separate rollup pass that flattens the type graph into one
+declaration file, so a consumer resolves a single `.d.ts` rather than traversing
+internal declaration fragments.
 
-`splitting: false` because a library entry point with one module has nothing to
-split, and chunks would only complicate the published layout.
+`splitting: false` because a single-entry library has nothing meaningful to
+split, and chunking would complicate the published layout without benefit.
 
-## What ships
+## Published artefacts
 
 ```text
 packages/raster-layer/dist/
-├── index.js         ESM
+├── index.js         ES module
 ├── index.js.map
-├── index.cjs        CJS
+├── index.cjs        CommonJS
 ├── index.cjs.map
-├── index.d.ts       types for the ESM entry
-└── index.d.cts      types for the CJS entry
+├── index.d.ts       declarations for the ESM entry
+└── index.d.cts      declarations for the CJS entry
 ```
 
-`@hridayanp/ui` has one extra step, because tsup does not copy CSS:
+`@hridayanp/ui` performs one additional step, because tsup does not copy CSS:
 
 ```jsonc
 "build": "tsup && cp src/styles.css dist/styles.css"
 ```
 
-## The exports map
+## Exports map
 
 ```jsonc
 {
@@ -93,23 +108,24 @@ packages/raster-layer/dist/
 }
 ```
 
-Three things are doing work here:
+Three declarations carry the contract:
 
-**`exports` seals the package.** A consumer can import `@hridayanp/raster-layer`
-and nothing else. No one can reach into `dist/internal/whatever` and then break
-when you refactor. `main`, `module` and `types` remain for tooling that predates
-`exports`.
+**`exports` defines the resolvable surface.** A consumer may import the package
+entry point and `package.json`, and nothing else. Internal modules are not
+addressable, so an internal refactor cannot break a consumer. `main`, `module`
+and `types` remain for tooling that predates conditional exports.
 
-**`sideEffects: false`** is what lets a bundler drop unused exports. Importing
-only `RasterLayer` does not pull in `preloadRasterFrame` or `RasterFrameCache`.
-`ui` declares `["*.css"]` instead, so its stylesheet survives tree-shaking.
+**`sideEffects: false`** permits a bundler to eliminate unreferenced exports.
+Importing only `RasterLayer` does not retain `preloadRasterFrame` or
+`RasterFrameCache`. `@hridayanp/ui` declares `["*.css"]` instead, so its
+stylesheet survives tree-shaking.
 
-**`files`** keeps `src/`, configs and tests out of the tarball. Verify with
-`npm publish --dry-run`.
+**`files`** excludes `src/`, configuration and fixtures from the tarball. Verify
+with `npm pack --dry-run`.
 
-## Workspace dependency ranges
+## Workspace version ranges
 
-Local dependencies are plain semver, not `workspace:*`:
+Internal dependencies use plain semver ranges rather than a workspace protocol:
 
 ```jsonc
 "dependencies": {
@@ -118,38 +134,41 @@ Local dependencies are plain semver, not `workspace:*`:
 }
 ```
 
-npm symlinks a workspace whenever its version satisfies the range, so
-development links locally — and a published manifest is **already correct** with
-no pack-time rewriting. What is on disk is what goes to the registry.
+npm symlinks a workspace package whenever its version satisfies the declared
+range, so development resolves locally while the published manifest is already
+correct. No pack-time rewriting occurs; the manifest on disk is the manifest on
+the registry.
 
-## The docs build
+## Documentation build
 
-`apps/docs` declares `@hridayanp/storybook` as a dependency purely so Turbo
-orders the two correctly. Its build then does:
+`apps/docs` declares `@hridayanp/storybook` as a development dependency solely
+to establish Turborepo ordering between the two. Its build then runs:
 
 ```jsonc
 "build": "vite build && node scripts/embed-storybook.mjs"
 ```
 
-The script copies `apps/storybook/storybook-static` into `apps/docs/dist/storybook`,
-producing one deployable directory:
+The script copies `apps/storybook/storybook-static` into
+`apps/docs/dist/storybook`, producing one deployable directory:
 
 ```text
 apps/docs/dist/
 ├── index.html          the documentation site
 ├── assets/
-└── storybook/          the full Storybook build
+└── storybook/          the Storybook build
     ├── index.html
     └── assets/
 ```
 
-One origin, no proxy, no CORS. `storybookBase()` in `src/site.ts` resolves to
-`http://localhost:6006` in development and `/storybook` in a build, overridable
-with `VITE_STORYBOOK_URL` if you deploy them separately.
+A single origin, requiring no reverse proxy and no cross-origin configuration.
+`storybookBase()` in `src/site.ts` resolves to `http://localhost:6006` in
+development and `/storybook` in a production build, overridable through
+`VITE_STORYBOOK_URL` when the two are deployed to separate origins.
 
-## Source aliasing in the apps
+## Source aliasing in the applications
 
-Both apps alias `@hridayanp/*` to package **source** rather than `dist`:
+Both applications alias `@hridayanp/*` to package **source** rather than to
+`dist`:
 
 ```ts
 const sourceAlias = (name: string) => ({
@@ -158,23 +177,25 @@ const sourceAlias = (name: string) => ({
 });
 ```
 
-So editing `packages/raster-layer/src/RasterLayer.tsx` hot-reloads both apps
-instantly, and neither needs a build first.
+A source edit therefore propagates to both applications through hot module
+replacement, and neither requires a prior build.
 
-> **Note:** The pattern is anchored with `^…$` on purpose. A prefix match would
-> swallow `@hridayanp/ui/styles.css` and rewrite it into a path *inside*
-> `index.ts`. There is a separate explicit alias for the stylesheet.
+> **Note:** The pattern is anchored with `^…$` deliberately. A prefix match
+> would capture `@hridayanp/ui/styles.css` and rewrite it into a path inside
+> `index.ts`; a separate explicit alias resolves the stylesheet. Unanchored
+> patterns also cause `@hridayanp/map-container` to match
+> `@hridayanp/map-controls`.
 
-Consumers are unaffected — they resolve the built entry points from
+Consumers are unaffected — they resolve the built entry points declared in each
 `package.json`.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
-| `npm run build` | All 14 workspaces, dependency-ordered, cached |
-| `npm run typecheck` | `tsc --noEmit` everywhere, against emitted `.d.ts` |
-| `npm run build --workspace @hridayanp/raster-layer` | One package |
-| `npx turbo run build --force` | Ignore the cache |
+| `npm run build` | All workspaces, dependency-ordered and cached |
+| `npm run typecheck` | `tsc --noEmit` across every workspace, against emitted declarations |
+| `npm run build --workspace @hridayanp/raster-layer` | A single package |
+| `npx turbo run build --force` | Bypass the cache |
 | `npx turbo run build --graph` | Print the resolved task graph |
-| `npm run clean` | Remove `dist/`, `.turbo/`, `storybook-static/` |
+| `npm run clean` | Remove `dist/`, `.turbo/` and `storybook-static/` |

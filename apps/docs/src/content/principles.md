@@ -1,14 +1,15 @@
-Five rules decided what became a package, what became a prop, and what was
-thrown away. They are worth knowing before you extend the library, because they
-are what keeps twelve packages from collapsing back into one application.
+Five rules determine what constitutes a package, what constitutes a prop, and
+where the boundary between library and application falls. They are the reason
+twelve packages remain twelve packages rather than collapsing back into one
+application.
 
-## 1. Props in, callbacks out
+## 1. Data flows in through props; events flow out through callbacks
 
-No component fetches, transforms or retrieves business data. There is no API
-client, no request cache, no retry policy and no authentication anywhere in the
-source.
+Components accept georeferenced data and configuration through their public
+interface and emit view-state and interaction events through callbacks. They do
+not perform retrieval, transformation or authorisation of domain data.
 
-Where a generic GIS component legitimately takes a URL — a Cloud-Optimised
+Where a component legitimately accepts a resource locator — a Cloud-Optimised
 GeoTIFF is designed to be read over HTTP range requests — the host supplies a
 URL it has already authorised:
 
@@ -16,68 +17,69 @@ URL it has already authorised:
 <RasterLayer data={{ kind: 'geotiff', source: signedUrl }} />
 ```
 
-The library decodes. It never decides how the URL was signed, when to refresh
-it, or what to do when it 403s.
+The library performs the decode. Credential lifecycle, refresh policy and
+failure handling remain with the host.
 
-**Why it matters:** the moment a component knows how to fetch, it knows about
-your auth, your error handling and your loading states — and it stops being
-reusable outside the application it was written for.
+**Rationale.** A component that encapsulates retrieval also encapsulates the
+application's authentication scheme, error taxonomy and loading semantics. Its
+reuse is then bounded by the application it was written for.
 
-## 2. No application state
+## 2. State ownership is explicit and external
 
-No Redux, no persisted store, no `localStorage`, no URL state. React context
-appears in exactly one place — `map-container` — and only so that a layer can
-find the map it is inside.
+The library maintains no global store, no persisted state and no URL-derived
+state. React context appears in exactly one package — `map-container` — and
+serves a single purpose: resolving the enclosing map instance and its readiness
+for descendant layers.
 
-Everything else is props, local state and callbacks. Components support
-controlled and uncontrolled patterns where both are reasonable (the timeline's
-`index` and `playing`, for instance), because a host frequently drives the same
-state from two places at once.
+All other state is held in props, local component state and callbacks.
+Components support both controlled and uncontrolled operation where both are
+meaningful — `TimelineControl` accepts `index` and `playing` independently — because a
+host frequently drives the same value from more than one origin: a control, a
+keyboard shortcut, a URL parameter.
 
-**Why it matters:** the old code read the colour palette from a Redux slice.
-That single line made every raster component untestable in isolation and
-unusable in a second application.
+**Rationale.** In the source this library was consolidated from, colour palettes
+were read from a Redux slice. That single coupling made every raster component
+untestable in isolation and unusable in a second application.
 
 ## 3. One capability per package
 
-A raster layer does not require the wind layer. A legend works with no map at
-all. `geo-utils` imports nothing.
+A raster layer does not require the particle layer. A legend operates without a
+map. `geo-utils` has no runtime dependencies.
 
-The dependency graph is a DAG with `geo-utils` at the bottom and the layer
-packages at the top, and **no edges between siblings**. See the
-[dependency graph](/docs/dependency-graph).
+The dependency graph is a directed acyclic graph rooted at `geo-utils`, with
+**no edges between sibling layer packages**. See
+[Dependency Graph](/docs/dependency-graph).
 
-**Why it matters:** it is what lets someone install an 8 KB legend for a report
-without pulling in MapLibre, and what stops a change to particles from being
-able to break rasters.
+**Rationale.** Granular boundaries make an 8 KB legend installable for a print
+report without acquiring MapLibre, and prevent a change in particle rendering
+from being able to affect raster rendering.
 
-## 4. Generalise, do not rename
+## 4. Generalise rather than rename
 
-This is the rule that did the most work.
+This rule performed the majority of the consolidation work.
 
-Six weather-specific raster components were **not** turned into six renamed
-packages. They were collapsed into one generic layer whose differences are two
-props:
+Six variable-specific raster components were **not** republished as six renamed
+packages. They were reduced to one generic layer whose variation is two props:
 
 ```tsx
-<RasterLayer data={rain}    colorScale={bluePalette}  min={0} max={120} />
-<RasterLayer data={thunder} colorScale={plasma}       min={0} max={100} />
+<RasterLayer data={precipitation} colorScale={bluePalette} min={0} max={120} />
+<RasterLayer data={probability}   colorScale={plasma}      min={0} max={100} />
 ```
 
-The test applied to every candidate: *if two components differ only in their
-data and their configuration, they are the same component.*
+The test applied to every candidate: *if two components differ only in the data
+they receive and the configuration they apply, they are one component.*
 
-The same reasoning produced one `VectorLayer` instead of per-feature-type
-overlays, one `GeoLegend` instead of per-variable legends, and one `GeoHover`
-instead of per-layer hover cards.
+The same reasoning produced a single `VectorLayer` in place of per-geometry
+overlays, a single `GeoLegend` in place of per-variable legends, and a single
+`GeoHover` in place of per-layer readout cards.
 
-**Why it matters:** a refactor that moves duplication into packages leaves you
-with the same duplication and more `package.json` files.
+**Rationale.** A refactor that relocates duplication into packages preserves the
+duplication and adds manifests.
 
-## 5. Peer dependencies for the heavy things
+## 5. Shared runtimes are peer dependencies
 
-React, MapLibre, deck.gl and WeatherLayers GL are never bundled into a package.
-They are declared as peers with wide ranges:
+React, MapLibre GL, deck.gl and WeatherLayers GL are never bundled into a
+package. They are declared as peers with deliberately wide ranges:
 
 ```jsonc
 "peerDependencies": {
@@ -86,42 +88,43 @@ They are declared as peers with wide ranges:
 }
 ```
 
-**Why it matters:** two copies of React in one tree produces `Invalid hook call`
-or hooks that silently return null. deck.gl and MapLibre keep module-level
-registries and behave just as badly. Peers guarantee one instance, supplied by
-whoever is at the top.
-
-It also means the library never forces a major version bump on you.
+**Rationale.** Two instances of React in one module graph produce
+`Invalid hook call` or hooks that resolve to null. MapLibre and deck.gl maintain
+module-scoped registries and fail comparably — layers constructed against one
+instance are rejected by the other, without a build error. Peer declaration
+guarantees a single instance resolved by the consuming application, and prevents
+the library from forcing a major-version upgrade.
 
 ---
 
-## What these rules excluded
+## Capabilities excluded by these rules
 
-Applying them consistently meant deliberately **not** building things that
-looked useful:
+Applying the rules consistently required declining to build components that
+appear useful in isolation:
 
-| Not included | Why |
+| Excluded | Reason |
 | --- | --- |
-| Layer picker / overlay toggles | Encodes what an application *is*, not what a map does |
+| Layer picker / overlay toggle panel | Encodes an application's information architecture, not a cartographic capability |
 | Site or region selector | Application domain |
-| Model / run switcher | Application domain |
-| Alert or notification panels | Application domain |
-| A data-fetching hook | Would drag auth, caching and error policy into the library |
-| A `<WeatherMap>` preset | Would bake one product's composition into a package |
+| Model or forecast-run switcher | Application domain |
+| Alert and notification panels | Application domain |
+| A data-fetching hook | Would introduce authentication, caching and error policy into the presentation tier |
+| A composed `<WeatherMap>` preset | Would fix one product's layer composition inside a package |
 
-Each of those is ten lines in a host application, and none of them is reusable
-across two different products.
+Each is a small amount of code in a host application, and none generalises
+across two products.
 
-## Applying them to new code
+## Applying the rules to new code
 
-When you add something, ask in order:
+Evaluate a proposed addition in order:
 
-1. **Does it fetch, cache or authenticate?** Then it belongs in the host.
-2. **Does it name a domain concept** — a variable, a product, a site? Then it is
-   a prop, not a component.
-3. **Does it duplicate an existing package with different configuration?**
-   Then it is a prop on that package.
-4. **Does it need another layer package to work?** Then the boundary is wrong.
+1. **Does it retrieve, cache or authorise?** It belongs in the host application.
+2. **Does it name a domain concept** — a variable, a product, a site? It is a
+   prop, not a component.
+3. **Does it duplicate an existing package under different configuration?** It
+   is a prop on that package.
+4. **Does it require a sibling layer package to function?** The boundary is
+   drawn in the wrong place.
 
-See [Adding a Package](/docs/adding-a-package) for the mechanics once the
-answers point at a genuine new capability.
+See [Adding a Package](/docs/adding-a-package) for the mechanics once a genuine
+new capability is established.

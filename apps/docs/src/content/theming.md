@@ -1,31 +1,33 @@
-Every colour, radius and font in the library is a CSS custom property. Theming
-means overriding variables, not fighting specificity.
+Presentation is parameterised through CSS custom properties. Retheming is
+accomplished by overriding design tokens rather than by overriding rules.
 
-## The stylesheet
+## Stylesheet
 
-One import, anywhere in your application:
+A single import, once per application:
 
 ```ts
 import '@hridayanp/ui/styles.css';
 ```
 
-It ships from `@hridayanp/ui` and covers every visual package — legend, hover
-card, timeline, controls and the shared primitives. Layer packages render
-nothing to the DOM and need no CSS.
+The stylesheet is published by `@hridayanp/ui` and covers every package that
+renders interface elements — legend, hover card, timeline, controls and the
+shared primitives. Layer packages render no DOM and require no stylesheet.
 
-## No Tailwind, no CSS-in-JS
+## Distribution model
 
-Class names are namespaced `gcl-` and shipped as one plain stylesheet. That is a
-deliberate choice with three consequences:
+Class names are scoped to a `gcl-` namespace and shipped as one plain
+stylesheet. Three properties follow from that choice:
 
-- A consumer needs **no build configuration** — no PostCSS plugin, no content
-  globs, no runtime style injection.
-- The library **cannot leak** into your components, and yours cannot leak into
-  it. Two isolated namespaces.
-- The whole surface is **inspectable** — open devtools, read the variables,
-  override what you want.
+- **No build integration.** No preprocessor, no PostCSS plugin, no content
+  globs, no runtime style injection. The stylesheet is consumable by any
+  bundler and by a plain `<link>` element.
+- **Bidirectional isolation.** Library rules cannot match application elements,
+  and application rules — including global element selectors — cannot match
+  library internals.
+- **Inspectable surface.** Every token is a declared custom property, readable
+  and overridable from developer tools.
 
-## Tokens
+## Design tokens
 
 ```css
 :root {
@@ -48,7 +50,8 @@ deliberate choice with three consequences:
 }
 ```
 
-Override any of them anywhere in your cascade:
+Overriding a token at any point in the cascade propagates to every component
+that consumes it:
 
 ```css
 :root {
@@ -58,18 +61,17 @@ Override any of them anywhere in your cascade:
 }
 ```
 
-Every panel, button, slider, legend and tooltip follows immediately.
+## Colour scheme
 
-## Light and dark
-
-Set the attribute on any ancestor:
+The active scheme is selected by a data attribute on any ancestor element:
 
 ```html
 <html data-gcl-theme="dark">
 <html data-gcl-theme="light">
 ```
 
-With **neither** set, the library follows the operating system:
+When the attribute is absent, the library resolves the scheme from the user
+agent preference:
 
 ```css
 @media (prefers-color-scheme: dark) {
@@ -77,64 +79,79 @@ With **neither** set, the library follows the operating system:
 }
 ```
 
-Toggling at runtime is a single attribute write:
+Runtime switching is a single attribute write. Because the tokens are custom
+properties, the transition requires no React re-render:
 
 ```ts
 document.documentElement.setAttribute('data-gcl-theme', next);
 ```
 
-Because everything is variables, the switch is instant and needs no re-render.
+## Scoped themes
 
-## Scoping a theme to part of the page
-
-The attribute works on any element, so a single map can carry its own theme:
+The attribute is honoured at any depth, so an individual map can carry a scheme
+independent of the surrounding page:
 
 ```tsx
 <div data-gcl-theme="dark">
-  <MapContainer …>
-    <GeoLegend … />   {/* dark, regardless of the page */}
+  <MapContainer center={[92, 25.5]} zoom={6}>
+    <GeoLegend title="Intensity" colorScale={palette} min={0} max={100} />
   </MapContainer>
 </div>
 ```
 
-## Class names
+The same mechanism scopes token overrides. A compact variant is a selector, not
+a second provider:
 
-Stable and namespaced, so you can target them directly when a variable is not
-enough:
+```css
+.compact-map { --gcl-radius: 2px; --gcl-space: 6px; }
+```
 
-| Class | What it is |
+## Class name reference
+
+Class names are stable and namespaced, and may be targeted directly where a
+token is insufficient.
+
+| Class | Element |
 | --- | --- |
-| `.gcl-panel` | The floating card every overlay sits in |
-| `.gcl-panel--floating`, `.gcl-panel--bottom-right` | Docked placement |
-| `.gcl-button`, `.gcl-button--icon`, `.gcl-button--solid` | Controls |
-| `.gcl-slider`, `.gcl-slider__track`, `.gcl-slider__thumb` | Sliders |
+| `.gcl-panel` | The elevated surface underlying every overlay |
+| `.gcl-panel--floating`, `.gcl-panel--bottom-right` | Docked placement modifiers |
+| `.gcl-button`, `.gcl-button--icon`, `.gcl-button--solid` | Interactive controls |
+| `.gcl-slider`, `.gcl-slider__track`, `.gcl-slider__thumb` | Slider internals |
 | `.gcl-legend`, `.gcl-legend__ramp`, `.gcl-legend__swatch` | Legend internals |
 | `.gcl-hover-card`, `.gcl-hover-card__row` | Readout card |
-| `.gcl-timeline`, `.gcl-timeline__scrubber` | Timeline |
+| `.gcl-timeline`, `.gcl-timeline__scrubber` | Timeline internals |
 | `.gcl-controls__group` | A segmented control cluster |
 | `.gcl-surface` | Portalled popovers, tooltips and selects |
 
-> **Note:** These are part of the public surface. They will not be renamed
-> within a major version.
+> **Note:** These class names form part of the public contract and will not be
+> renamed within a major version.
 
-## Styling the map itself
+## Cartographic styling
 
-Basemap appearance is a MapLibre style, not a library concern:
+Basemap appearance is expressed as a MapLibre style specification and is
+therefore outside the token system:
 
 ```ts
-import { createBlankStyle, createRasterStyle, withPMTilesOutline }
-  from '@hridayanp/map-container';
+import {
+  createBlankStyle,
+  createRasterStyle,
+  withPMTilesOutline,
+} from '@hridayanp/map-container';
 
-createBlankStyle('#0b1220');                     // background only, no requests
-createRasterStyle(tiles, { attribution, ... });  // a raster basemap
-withPMTilesOutline(style, { url, sourceLayer }); // add a vector boundary layer
+createBlankStyle('#0b1220');
+createRasterStyle(tileUrl, { attribution, maxzoom: 19 });
+withPMTilesOutline(style, { url, sourceLayer, color });
 ```
 
-Anything MapLibre can express, you can pass as `mapStyle`.
+Any style MapLibre can express is a valid `mapStyle` value. Layer symbology —
+fill colour, stroke width, point radius — is configured per layer and accepts
+MapLibre expressions for data-driven variation; see
+[`vector-layer`](/docs/vector-layer#data-driven-symbology).
 
 ## Overlay placement
 
-Overlay components take a `placement` prop rather than needing positioning CSS:
+Overlay components accept a `placement` prop and dock themselves to a corner of
+the map, so positioning requires no application CSS:
 
 ```tsx
 <GeoLegend placement="bottom-right" />
@@ -142,8 +159,11 @@ Overlay components take a `placement` prop rather than needing positioning CSS:
 <MapControlBar placement="top-right" />
 ```
 
-Omit it and the component renders as a normal block element you position
-yourself — a legend in a sidebar or a print layout needs no map at all.
+Accepted values are `top-left`, `top-center`, `top-right`, `bottom-left`,
+`bottom-center` and `bottom-right`. Omitting `placement` renders the component
+as an ordinary block element positioned by the host — a legend in a sidebar or a
+print layout requires no map at all.
 
-The overlay layer is `pointer-events: none`, so the map stays draggable through
-the gaps between panels; each panel opts its own subtree back in.
+The overlay container is declared `pointer-events: none` and each panel re-enables
+pointer interaction for its own subtree, so map panning remains available in the
+space between panels.

@@ -1,10 +1,10 @@
-The twelve `@hridayanp/*` packages are built to be published independently to
-npm. This is what ships, how versions relate, and how to verify a release before
-it becomes permanent.
+The twelve `@hridayanp/*` packages are published independently to npm. This is
+the published surface, the versioning model, and the verification sequence
+preceding a release.
 
-## What ships
+## Published surface
 
-Each package declares exactly what goes in the tarball:
+Each package declares its tarball contents explicitly:
 
 ```jsonc
 {
@@ -14,15 +14,16 @@ Each package declares exactly what goes in the tarball:
 }
 ```
 
-Nothing else — no `src`, no `tsconfig.json`, no stories, no test fixtures.
-`.npmignore` is deliberately absent; an allowlist cannot leak a file you forgot
-to exclude.
+Nothing else is included — no `src`, no `tsconfig.json`, no stories, no
+fixtures. `.npmignore` is deliberately absent: an allowlist cannot leak a file
+that was not explicitly excluded.
 
-`sideEffects: false` tells a bundler that importing a module and not using its
-exports is safe to drop. Importing `@hridayanp/geo-utils` for one function pulls
-in one function.
+`sideEffects: false` informs a bundler that importing a module without
+referencing its exports is safe to eliminate. Importing one function from
+`@hridayanp/geo-utils` retains one function. `@hridayanp/ui` declares
+`["*.css"]` instead, so its stylesheet survives tree-shaking.
 
-## The exports map
+## Exports map
 
 ```jsonc
 {
@@ -40,36 +41,39 @@ in one function.
 }
 ```
 
-`exports` **seals** the package. A consumer cannot reach
-`@hridayanp/raster-layer/dist/useRasterImage.js` — only the entry point and
+`exports` defines the resolvable surface. A consumer cannot address
+`@hridayanp/raster-layer/dist/useRasterImage.js`; only the entry point and
 `package.json` resolve.
 
-That is the difference between a public API you can refactor behind and one where
-every internal file is somebody's import. `main`/`module`/`types` remain for
-tooling that predates `exports`.
+That is the difference between a public API that can be refactored behind and
+one in which every internal module is somebody's import specifier. `main`,
+`module` and `types` remain for tooling predating conditional exports.
 
-`@hridayanp/ui` adds one more subpath, because a stylesheet has to be importable:
+`@hridayanp/ui` declares one additional subpath, because a stylesheet must be
+importable:
 
 ```jsonc
 "./styles.css": "./dist/styles.css"
 ```
 
-## Dual output
+## Module formats
 
-`tsup` emits three artefacts per package:
+`tsup` emits four artefacts per package:
 
-| File | Format | For |
+| File | Format | Consumer |
 | --- | --- | --- |
-| `dist/index.js` | ESM | Modern bundlers, `import` |
-| `dist/index.cjs` | CJS | Node `require`, older toolchains |
-| `dist/index.d.ts` | Types | TypeScript |
+| `dist/index.js` | ES module | Modern bundlers, `import` |
+| `dist/index.cjs` | CommonJS | Node `require`, older toolchains |
+| `dist/index.d.ts` | Declarations | TypeScript, ESM resolution |
+| `dist/index.d.cts` | Declarations | TypeScript, CJS resolution |
 
-Types are bundled by rollup into a single declaration file, so a consumer's
-editor resolves one file rather than walking a tree of `.d.ts` fragments.
+Declarations are flattened by a rollup pass into a single file per format, so a
+consumer's editor resolves one declaration rather than traversing a tree of
+fragments.
 
-## Peer dependencies are the contract
+## Peer dependencies as contract
 
-React, MapLibre, deck.gl and WeatherLayers are **peers**, never dependencies:
+React, MapLibre GL, deck.gl and WeatherLayers GL are peers, never dependencies:
 
 ```jsonc
 "peerDependencies": {
@@ -78,19 +82,19 @@ React, MapLibre, deck.gl and WeatherLayers are **peers**, never dependencies:
 }
 ```
 
-> **Warning:** This is not a preference. Two copies of React in one bundle break
-> hooks. Two copies of MapLibre mean `map instanceof Map` fails across the
-> boundary and layers silently never attach. Two copies of `@deck.gl/core`
-> produce layers deck refuses to render. Every one of these fails at runtime with
-> no build error.
+> **Warning:** This is a correctness requirement rather than a preference. Two
+> React instances in one bundle invalidate hooks. Two MapLibre instances cause
+> `map instanceof Map` to fail across the boundary, so layers never attach. Two
+> `@deck.gl/core` instances produce layers deck refuses to render. Each of these
+> fails at runtime with no build diagnostic.
 
 Ranges are deliberately wide so the library does not force a consumer's major
-version upgrade. The `@hridayanp/*` cross-dependencies are ordinary
-`dependencies`, because npm deduplicates identical versions and there is no
-singleton to protect.
+version upgrade. Cross-package `@hridayanp/*` dependencies are ordinary
+`dependencies`, because npm deduplicates identical versions and no singleton
+requires protection.
 
-`geotiff` is an **optional** peer, imported lazily. Install it only if you decode
-GeoTIFFs.
+`geotiff`, `pmtiles` and `@geomatico/maplibre-cog-protocol` are **optional**
+peers, imported dynamically at the point of use.
 
 ## Versioning
 
@@ -101,35 +105,41 @@ between them:
 "dependencies": { "@hridayanp/geo-utils": "^0.1.0" }
 ```
 
-Lockstep is the right default at this stage: the packages were extracted from
-one codebase and their internal contracts (bounds order, raster row order,
-context shape) still change together. Independent versioning becomes worthwhile
-once those contracts are stable and packages genuinely evolve at different rates.
+Lockstep versioning is appropriate at this stage: the packages were extracted
+from one codebase and their internal contracts — extent ordering, raster row
+ordering, context shape — still evolve together. Independent versioning becomes
+worthwhile once those contracts are stable and packages genuinely diverge in
+release cadence.
 
-Under semver, `0.x` treats the **minor** as the breaking position — `0.1.x` to
-`0.2.0` may break. Say so in the release notes.
+Under semantic versioning, `0.x` treats the **minor** position as breaking:
+`0.1.x` to `0.2.0` may introduce incompatibility. State this explicitly in
+release notes.
 
-## Before you publish
+## Pre-release verification
 
 ```bash
 npm run clean
 npm install
-npm run build          # 15 tasks
-npm run typecheck      # every workspace
+npm run build
+npm run typecheck
 npm run build-storybook
-node smoke.mjs         # headless render check
+node smoke.mjs
+node smoke-docs.mjs
 ```
 
-Then inspect what would actually ship:
+The clean install is material: it is the only way to detect a dependency that
+resolves locally because something else happens to hoist it.
+
+Then inspect the tarball contents:
 
 ```bash
 npm pack --workspace @hridayanp/raster-layer --dry-run
 ```
 
-Read the file list. `src/`, `.storybook/` or a stray fixture in that output means
-`files` is wrong.
+The presence of `src/`, `.storybook/` or a fixture in that listing indicates an
+incorrect `files` declaration.
 
-Verify the tarball resolves from a clean directory:
+Verify resolution from a clean directory:
 
 ```bash
 npm pack --workspace @hridayanp/geo-utils
@@ -142,67 +152,62 @@ node -e "console.log(Object.keys(require('@hridayanp/geo-utils')))"
 
 ```bash
 npm login
+npm publish --workspaces --dry-run
 npm publish --workspaces --access public
 ```
 
 `--access public` is required for a scoped package; without it npm attempts a
-private publish and fails on a free account. It is also in each package's
-`publishConfig`, so it applies even when publishing one at a time.
+private publish. It is additionally declared in each package's `publishConfig`,
+so it applies when publishing individually.
 
-Publish order does not matter to npm, but `geo-utils` first, then
-`map-container`, then everything else means a consumer never sees a package whose
-declared dependency is not yet on the registry.
+Publish order is immaterial to the registry, but publishing `geo-utils` first,
+then `map-container`, then the remainder ensures a consumer never encounters a
+package whose declared dependency is not yet resolvable.
 
-Dry run the whole set first:
+The applications are `private: true` and are skipped automatically.
 
-```bash
-npm publish --workspaces --dry-run
-```
-
-### Releasing a new version
+### Releasing a version
 
 ```bash
 npm version minor --workspaces --no-git-tag-version
-# review the diff, update cross-dependency ranges if the minor moved
+# review the diff; update cross-package ranges if the minor position moved
 git commit -am "release: 0.2.0"
 git tag v0.2.0
 npm publish --workspaces --access public
 git push && git push --tags
 ```
 
-The apps are `private: true`, so they are skipped automatically.
+## Consumer installation
 
-## After publishing
-
-A consumer installs only what they need:
+A consumer installs only what the application requires:
 
 ```bash
-npm install @hridayanp/map-container @hridayanp/raster-layer maplibre-gl react react-dom
+npm install @hridayanp/map-container @hridayanp/raster-layer \
+  maplibre-gl react react-dom
 ```
 
-That is the payoff for the dependency discipline: someone who wants a raster
-layer does not install deck.gl, WeatherLayers, Radix or `geotiff`. See
+This is the return on the dependency discipline: an application rendering a
+raster layer does not acquire deck.gl, WeatherLayers, Radix or `geotiff`. See
 [Dependency Graph](/docs/dependency-graph).
 
-## A published version is permanent
+## Immutability of published versions
 
-npm allows unpublishing only within 72 hours, and only if nothing depends on the
-version. Treat `npm publish` as irreversible.
+npm permits unpublishing only within 72 hours, and only when no package depends
+on the version. Treat `npm publish` as irreversible.
 
-`npm deprecate` is the tool for a bad release:
-
-```bash
-npm deprecate @hridayanp/raster-layer@0.1.1 "Broken exports map; use 0.1.2"
-```
-
-## Publishing under your own scope
-
-Change the scope in all twelve `package.json` files, in the cross-dependency
-names, and in the source aliases in both apps' `vite.config.ts`:
+`npm deprecate` is the remedy for a defective release:
 
 ```bash
-grep -rl "@hridayanp/" --include="*.json" --include="*.ts" --include="*.tsx" --include="*.md" .
+npm deprecate @hridayanp/raster-layer@0.1.1 "Incorrect exports map; use 0.1.2"
 ```
 
-The scope appears in package names, dependency keys, import specifiers, the Vite
-aliases, and the documentation. All of them have to move together.
+## Republishing under a different scope
+
+The scope appears in package names, cross-package dependency keys, import
+specifiers, the Vite aliases in both applications, and the documentation. All
+occurrences must change together:
+
+```bash
+grep -rl "@hridayanp/" \
+  --include="*.json" --include="*.ts" --include="*.tsx" --include="*.md" .
+```

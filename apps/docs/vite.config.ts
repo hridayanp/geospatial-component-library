@@ -25,11 +25,11 @@ const sourceAlias = (name: string) => ({
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: 3001,
     strictPort: false,
   },
   preview: {
-    port: 3000,
+    port: 3001,
   },
   resolve: {
     alias: [

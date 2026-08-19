@@ -64,7 +64,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       <nav className="docs-header__actions">
         <Link href="/docs/overview" className="docs-header__link">
-          Docs
+          Documentation
         </Link>
         <Link href="/docs/installation" className="docs-header__link">
           Install

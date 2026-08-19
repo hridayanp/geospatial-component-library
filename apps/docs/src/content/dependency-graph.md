@@ -1,10 +1,10 @@
-Twelve packages, arranged as a directed acyclic graph with no edges between
-siblings.
+Twelve packages arranged as a directed acyclic graph rooted at `geo-utils`, with
+no edges between sibling layer packages.
 
-## The graph
+## Structure
 
 ```text
-                    geo-utils          (zero dependencies)
+                    geo-utils          (no runtime dependencies)
                    /     |     \
         raster-utils     |      \
          /      \        |       \
@@ -19,76 +19,83 @@ siblings.
                        └──── geo-legend ─────┘
 ```
 
-## Dependencies in full
+## Resolved dependencies
 
-| Package | Depends on | Peer dependencies |
+| Package | Workspace and third-party dependencies | Peer dependencies |
 | --- | --- | --- |
 | `geo-utils` | — | — |
 | `raster-utils` | `geo-utils`, `chroma-js` | `geotiff` (optional) |
-| `ui` | Radix primitives | React |
-| `map-container` | `geo-utils` | React, MapLibre, `pmtiles`* , COG protocol* |
-| `deck-overlay` | `map-container` | React, MapLibre, deck.gl core + mapbox |
-| `raster-layer` | `geo-utils`, `raster-utils`, `map-container` | React, MapLibre |
-| `vector-layer` | `geo-utils`, `map-container` | React, MapLibre |
-| `wind-particle-layer` | `geo-utils`, `map-container`, `deck-overlay` | React, MapLibre, deck.gl ×3, WeatherLayers |
-| `geo-legend` | `ui` | React |
-| `geo-hover` | `geo-utils`, `raster-utils`, `map-container`, `ui` | React, React DOM, MapLibre |
-| `timeline-control` | `ui` | React |
-| `map-controls` | `geo-utils`, `map-container`, `ui` | React, MapLibre |
+| `ui` | Radix primitives | `react`, `react-dom` |
+| `map-container` | `geo-utils` | `react`, `react-dom`, `maplibre-gl`; `pmtiles` and `@geomatico/maplibre-cog-protocol` (optional) |
+| `deck-overlay` | `map-container` | `react`, `maplibre-gl`, `@deck.gl/core`, `@deck.gl/mapbox` |
+| `raster-layer` | `geo-utils`, `raster-utils`, `map-container` | `react`, `maplibre-gl` |
+| `vector-layer` | `geo-utils`, `map-container` | `react`, `maplibre-gl` |
+| `wind-particle-layer` | `geo-utils`, `map-container`, `deck-overlay` | `react`, `maplibre-gl`, `weatherlayers-gl`, `@deck.gl/core`, `@deck.gl/mapbox`, `@deck.gl/extensions`, `@deck.gl/layers` |
+| `geo-legend` | `ui` | `react` |
+| `geo-hover` | `geo-utils`, `raster-utils`, `map-container`, `ui` | `react`, `react-dom`, `maplibre-gl` |
+| `timeline-control` | `ui` | `react` |
+| `map-controls` | `geo-utils`, `map-container`, `ui` | `react`, `maplibre-gl` |
 
-\* optional
+## Invariants of the graph
 
-## The three rules that hold
+### `geo-utils` has no dependencies
 
-### 1. `geo-utils` depends on nothing
+No React, no MapLibre, no geometry library. It is the one package every other
+package depends on, which is precisely why its weight is constrained.
 
-No React, no MapLibre, no Turf, no geometry library. It is the only package
-every other one depends on, which is exactly why it has to stay weightless.
+The consequence is that it is usable outside this library entirely — in a Node
+service, a web worker, or a host that is not React. Coordinate conventions,
+extent algebra and GeoJSON traversal are therefore shareable between a browser
+renderer and a server-side pipeline without duplication.
 
-It is also usable outside this library entirely — in a Node service, a web
-worker, or a host that is not React.
+### No layer package depends on another layer package
 
-### 2. No layer depends on another layer
+`raster-layer` has no knowledge of `wind-particle-layer`. They share
+`map-container` and nothing further.
 
-`raster-layer` does not know `wind-particle-layer` exists. They share
-`map-container` and nothing else.
+This is what makes the packages independently installable and independently
+evolvable: a modification to one cannot affect the rendering behaviour of
+another.
 
-This is what makes the packages genuinely independent: you can install one, and
-a change to another cannot break it.
+### Shared runtimes appear only as peers
 
-### 3. The heavy runtimes are peers, never dependencies
+React, MapLibre GL, deck.gl and WeatherLayers GL are declared exclusively in
+`peerDependencies`. A single instance is resolved by the consuming application
+and shared across every package.
 
-React, MapLibre, deck.gl and WeatherLayers appear only in `peerDependencies`.
-There is one copy in the consuming application, and everything shares it.
+> **Warning:** For the same reason, running `npm install` **inside** a package
+> directory breaks the workspace. It creates a nested `node_modules` that
+> shadows the hoisted resolution, producing two React instances in one module
+> graph — `Invalid hook call`, or hooks resolving to null. Install from the
+> workspace root.
 
-> **Warning:** This is also why running `npm install` **inside** a package
-> breaks the workspace. It creates a nested `node_modules` that shadows the
-> hoisted copies, and you end up with two Reacts in one tree — `Invalid hook
-> call`, or hooks silently returning null. Always install from the root.
+## Rationale for specific boundaries
 
-## Why `deck-overlay` is its own package
+### `deck-overlay` as a distinct package
 
-It is the only place in the library that knows about deck.gl. Keeping it
-separate means `raster-layer` and `vector-layer` never drag a WebGL rendering
+It is the only module in the library that references deck.gl. Isolating it means
+`raster-layer` and `vector-layer` never introduce a second WebGL rendering
 engine into a bundle that has no use for one.
 
-`wind-particle-layer` depends on it. Nothing else does.
+`wind-particle-layer` depends on it. No other package does.
 
-## Why `geo-legend` duplicates a little colour code
+### Localised colour-ramp logic in `geo-legend`
 
-`geo-legend` has its own 90-line `colorScale.ts` rather than importing
-`raster-utils`. That is deliberate.
+`geo-legend` implements its own ninety-line ramp resolver rather than importing
+`raster-utils`.
 
-A legend needs a CSS gradient and a list of swatches. Importing `raster-utils`
-would pull `chroma-js` and the GeoTIFF decoder into a bundle that may contain no
-raster at all. Ninety lines of duplication is cheaper than that dependency.
+A legend requires a CSS gradient and an ordered swatch list. Depending on
+`raster-utils` would introduce `chroma-js` and the GeoTIFF decoding path into a
+bundle that may contain no raster data at all. The duplication is bounded and
+the dependency saving is substantial.
 
-The same reasoning does **not** apply to `raster-layer`, which genuinely needs
-the full colourisation pipeline.
+The same reasoning does not apply to `raster-layer`, which requires the full
+colourisation pipeline.
 
-## How Turbo uses this
+## Build ordering
 
-Build order is derived from the `dependencies` field, not configured:
+Turborepo derives task order from each package's `dependencies` field; no
+ordering is configured:
 
 ```text
 geo-utils ──┬─→ raster-utils ──→ raster-layer ──→ (docs, storybook)
@@ -97,15 +104,15 @@ geo-utils ──┬─→ raster-utils ──→ raster-layer ──→ (docs, s
 ui ─────────────────────────────→ geo-legend, timeline-control, map-controls
 ```
 
-Adding a package with correct `dependencies` slots it into the graph
-automatically. There is no order list to update.
+A new package with correctly declared dependencies is inserted into the graph
+automatically. There is no ordering list to maintain.
 
-## Verifying the graph
+## Inspecting the graph
 
 ```bash
-npm ls @hridayanp/geo-utils        # who depends on it
-npx turbo run build --graph        # Turbo's resolved task graph
+npm ls @hridayanp/geo-utils        # resolved dependents
+npx turbo run build --graph        # Turborepo's resolved task graph
 ```
 
-If a layer package ever appears in another layer package's dependencies, the
-boundary is wrong — see [Design Principles](/docs/principles).
+A layer package appearing in another layer package's `dependencies` indicates a
+misplaced boundary — see [Design Principles](/docs/principles).

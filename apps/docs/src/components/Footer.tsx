@@ -44,7 +44,7 @@ export function Footer() {
 
         <div className="docs-footer__columns">
           <div>
-            <h3>Documentation</h3>
+            <h3>Getting Started</h3>
             <Link href="/docs/overview">Overview</Link>
             <Link href="/docs/installation">Installation</Link>
             <Link href="/docs/quick-start">Quick Start</Link>
@@ -65,7 +65,7 @@ export function Footer() {
             <Link href="/docs/wind-particle-layer">wind-particle-layer</Link>
           </div>
           <div>
-            <h3>More</h3>
+            <h3>Reference</h3>
             <a href={storybookHome()} target="_blank" rel="noreferrer noopener">
               Storybook
             </a>

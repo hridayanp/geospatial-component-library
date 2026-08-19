@@ -10,20 +10,20 @@ const HeroMap = lazy(() =>
 
 const HIGHLIGHTS = [
   {
-    title: 'Props in, callbacks out',
-    body: 'No API client, no store, no routes, no auth. The host application owns data retrieval; these packages own rendering. Every component is pure with respect to your backend.',
+    title: 'Explicit responsibility boundary',
+    body: 'Components occupy the presentation tier. Georeferenced data and configuration enter through props; view state and interaction events leave through callbacks. Retrieval, authorisation and application state remain with the host.',
   },
   {
-    title: 'One raster layer, not six',
-    body: 'Per-variable map components differ only in their data and their colour ramp. Both are props here, so temperature, rainfall, probability and pressure are the same component.',
+    title: 'Generalised rendering primitives',
+    body: 'Variable-specific map components differ only in the band they render and the ramp they apply. Both are props, so precipitation, temperature and probability of exceedance are one component.',
   },
   {
-    title: 'Install only what you use',
-    body: 'Twelve packages, each independently versioned and publishable. A legend in a report costs about eight kilobytes and pulls in no map at all.',
+    title: 'Granular package boundaries',
+    body: 'Twelve packages, each independently versioned and publishable. A symbology key for a print report resolves without acquiring a map renderer.',
   },
   {
-    title: 'Peer dependencies for the heavy things',
-    body: 'React, MapLibre, deck.gl and WeatherLayers are never bundled. One instance, supplied by you, shared by everything.',
+    title: 'Single-instance runtime guarantee',
+    body: 'React, MapLibre GL, deck.gl and WeatherLayers GL are declared as peer dependencies throughout. Exactly one instance is resolved per application, and no major-version upgrade is imposed.',
   },
 ];
 
@@ -53,9 +53,9 @@ export function Home() {
             <span>{SITE.scope}/*</span>
           </div>
           <h1>
-            Geospatial components
+            Geospatial rendering
             <br />
-            that know nothing about your&nbsp;backend.
+            primitives for React.
           </h1>
           <p>{SITE.tagline}</p>
 
@@ -84,7 +84,7 @@ export function Home() {
         <Suspense
           fallback={
             <div className="docs-hero__map docs-hero__map--loading">
-              <span>Loading live demo…</span>
+              <span>Initialising renderer…</span>
             </div>
           }
         >
@@ -93,9 +93,11 @@ export function Home() {
       </section>
 
       <p className="docs-hero__caption">
-        Live, above — a raster layer, a vector overlay, GPU wind particles, two
-        legends and a zoom control, composed inside one <code>MapContainer</code>.
-        Every value is generated in the browser. Nothing is fetched.
+        Rendered above: a raster layer, a vector overlay, GPU flow particles, two
+        symbology keys and a zoom control, composed within a single{' '}
+        <code>MapContainer</code>. Every value is generated deterministically in
+        the browser — the demonstration requires no backend, because the library
+        does not.
       </p>
 
       <section className="docs-highlights">
@@ -109,11 +111,13 @@ export function Home() {
 
       <section className="docs-home__code">
         <div>
-          <h2>Composition is just nesting</h2>
+          <h2>Composition through nesting</h2>
           <p>
-            Layers attach themselves to the enclosing map through React context,
-            so there is no layer registry to maintain and no ordering array to
-            keep in sync. Mount order is draw order.
+            Layer components resolve the enclosing map through React context and
+            register their own sources and style layers, so there is no layer
+            registry to maintain and no ordering array to synchronise. Mount
+            order determines draw order; <code>beforeId</code> overrides it where
+            data belongs beneath basemap labels.
           </p>
           <Link href="/docs/composition" className="docs-button docs-button--ghost">
             Composition guide
@@ -125,7 +129,7 @@ export function Home() {
       </section>
 
       <section className="docs-home__index">
-        <h2>Everything in here</h2>
+        <h2>Documentation index</h2>
         <div className="docs-home__groups">
           {GROUPS.map((group) => (
             <div key={group} className="docs-home__group">

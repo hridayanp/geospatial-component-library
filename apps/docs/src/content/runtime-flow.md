@@ -1,7 +1,7 @@
-What actually happens, in order, from mount through a timeline step to a basemap
-swap.
+The ordered lifecycle of a composed map: initial mount, a temporal frame
+transition, and a basemap style reload.
 
-## The composition
+## Reference composition
 
 ```tsx
 <MapContainer center={[92, 25.5]} zoom={6}>
@@ -13,13 +13,13 @@ swap.
 </MapContainer>
 ```
 
-## Mount
+## Mount sequence
 
-**1. `MapContainer` renders.** It builds a specific DOM structure:
+**1. `MapContainer` renders its DOM structure.**
 
 ```tsx
-<div style={{ position: 'relative' }}>        {/* React owns */}
-  <div ref={containerRef} />                   {/* MapLibre owns — React NEVER touches its children */}
+<div style={{ position: 'relative' }}>        {/* React-owned */}
+  <div ref={containerRef} />                   {/* MapLibre-owned; React never reconciles its children */}
   <MapContext.Provider>
     <div style={{ pointerEvents: 'none' }}>    {/* overlay layer */}
       {children}
@@ -28,59 +28,65 @@ swap.
 </div>
 ```
 
-Two siblings, not one node. If children rendered into the node MapLibre owns,
-React's reconciler and MapLibre's canvas management would fight over
-`childNodes`.
+Two siblings rather than one node. If children rendered into the element
+MapLibre owns, React's reconciler and MapLibre's canvas management would both
+mutate the same `childNodes` collection.
 
-The overlay is `pointer-events: none` so the map stays draggable through the
-gaps between panels; each `Panel` opts its own subtree back in.
+The overlay layer declares `pointer-events: none` so that map panning remains
+available between panels; each `Panel` re-enables pointer interaction for its
+own subtree.
 
-**2. The map instance is created** and listeners are attached. Context is
-`{ map, ready: false, styleVersion: 0 }`. Children render immediately but every
-layer effect short-circuits on `ready`.
+**2. The map instance is constructed** and event listeners are attached. Context
+is `{ map, ready: false, styleVersion: 0 }`. Children render immediately, but
+every layer effect short-circuits on `ready`.
 
-**3. The style loads.** `load` fires → `ready: true`, `styleVersion: 1`. Every
-layer's effect dependency array changes, so they all attach now — in mount
-order, which is draw order.
+**3. The style loads.** The `load` event transitions context to
+`{ ready: true, styleVersion: 1 }`. Every layer's effect dependency array
+changes, so all layers attach at this point — in mount order, which is draw
+order.
 
-**4. `RasterLayer`** calls `useRasterImage`. Cache miss, so it colourises the
-array into a PNG data URL, writes it to buffer A, and mounts an image source
-plus a raster layer.
+**4. `RasterLayer`** invokes `useRasterImage`. On a cache miss the band is
+colourised to a PNG data URL, written into buffer A, and registered as a
+MapLibre `image` source with an accompanying `raster` style layer.
 
-**5. `VectorLayer`** memoises the FeatureCollection, builds up to five
-sub-layer specs, and adds one GeoJSON source with four layers.
+**5. `VectorLayer`** normalises its input to a FeatureCollection, derives up to
+five sub-layer specifications, and registers one `geojson` source with the
+corresponding style layers.
 
 **6. `WindParticleLayer`** encodes a UV texture, awaits
 `WeatherLayers.loadTextureData`, constructs a `ParticleLayer`, and registers it
-through `useDeckLayers`. There is no `<DeckOverlay>` host here, so the hook
-creates its own `MapboxOverlay` and calls `map.addControl`.
+through `useDeckLayers`. With no `<DeckOverlay>` host present, the hook
+provisions its own `MapboxOverlay` and calls `map.addControl`.
 
-**7. `GeoLegend`** renders a `Panel` into the overlay div. It never touches the
-map.
+**7. `GeoLegend`** renders a `Panel` into the overlay layer. It performs no map
+interaction.
 
-**8. `GeoHover`** subscribes to `mousemove` on the map. Each move samples the
-raster array and sets local state.
+**8. `GeoHover`** subscribes to the map's `mousemove` event. Each event samples
+the raster array and updates local component state.
 
-## A timeline step
+## Temporal frame transition
 
-`frameKey` changes. What happens:
+`frameKey` changes. The resulting sequence:
 
-- `useRasterImage` bumps an internal request id, which **cancels** any in-flight
-  decode. It checks the cache; on a hit the frame is available synchronously.
-- `RasterLayer` writes the frame to the **inactive** buffer, waits two animation
-  frames, then flips which buffer is opaque. **No flash.**
-- `useMapSourceLayers` sees the same source type and the same layer ids, so it
-  calls `updateImage()` **in place** rather than removing and re-adding.
-  **No remount, no texture churn.**
-- `GeoHover` receives the new raster through props, so hover values track the
-  frame on screen.
+- `useRasterImage` increments an internal request identifier, **invalidating**
+  any in-flight decode. It consults the frame cache; on a hit the colourised
+  frame is available synchronously.
+- `RasterLayer` writes the frame into the **inactive** image source, waits two
+  animation frames, and then inverts which source is opaque. The transition
+  produces no visible discontinuity.
+- `useMapSourceLayers` observes an unchanged source type and an unchanged set of
+  layer identifiers, and therefore calls `updateImage()` **in place** rather
+  than removing and re-adding. No layer remount and no texture reallocation
+  occur.
+- `GeoHover` receives the new raster through props, so probed values remain
+  consistent with the rendered frame.
 
-### Why the request id matters
+### Request-identifier invalidation
 
-Without it, scrubbing fast means a slow frame N can resolve *after* frame N+3
-has already rendered, and overwrite it. The map then appears to lag or jump
-backwards — a bug that is very hard to reproduce deliberately and very easy to
-ship.
+Without it, rapid scrubbing allows a slow decode of frame *N* to resolve after
+frame *N+3* has already rendered, overwriting it. The rendered frame then lags
+or regresses relative to the scrubber — a defect that is difficult to reproduce
+deliberately and straightforward to ship.
 
 ```ts
 const id = ++requestId.current;
@@ -88,85 +94,88 @@ const id = ++requestId.current;
 if (cancelled || requestId.current !== id) return;   // superseded
 ```
 
-### Why two animation frames
+### Two-frame buffer flip
 
-Frame one lets React commit the new image source. Frame two lets MapLibre finish
-uploading the texture to the GPU. Flip any sooner and you see a blank buffer.
+The first animation frame allows React to commit the new image source. The
+second allows MapLibre to complete the texture upload. Inverting the buffers
+earlier exposes an unpopulated source.
 
 Combined with `'raster-fade-duration': 0` — which disables MapLibre's own 300 ms
-cross-fade, since it fights the manual swap — the result is a hard, flash-free
-cut between frames.
+raster cross-fade, since it competes with the manual swap — the result is a hard
+cut between frames with no intermediate blend.
 
-## A basemap swap
+## Basemap style reload
 
 ```tsx
 <MapContainer mapStyle={nextStyle}>
 ```
 
-MapLibre's `setStyle()` **discards every source and layer that was added on top
-of the style.** Left alone, all your data would silently disappear.
+MapLibre's `setStyle()` **discards every source and style layer added on top of
+the previous style.** Without recovery, all application data would be removed
+from the map.
 
-The recovery is a single number in context:
+The recovery mechanism is a monotonic counter in context:
 
 ```ts
 map.on('styledata', () => setStyleVersion(v => v + 1));
 ```
 
-Every layer's structural effect lists `styleVersion` in its dependencies, so all
-of them re-attach on the next tick. Automatic, for every layer package in the
-library.
+Every layer's structural effect lists `styleVersion` among its dependencies, so
+all layers re-register on the following tick. This is automatic for every layer
+package in the library.
 
-> **Warning:** Anything you add to the map by hand — your own source, your own
-> layer — has to do the same. Subscribe to `styledata` or use
-> `useMapSourceLayers`, which handles it for you.
+> **Warning:** Sources and layers added directly by the host application must
+> implement the same recovery — either by subscribing to `styledata` or by
+> using `useMapSourceLayers`, which handles it.
 
 ## Inside `useMapSourceLayers`
 
-This is the hook every layer uses, and where most of the subtlety lives. It
-splits into four effects with deliberately different dependency sets:
+This hook backs every layer package and concentrates most of the lifecycle
+subtlety. It is decomposed into four effects with deliberately distinct
+dependency sets:
 
-| Effect | Dependencies | What it does |
+| Effect | Dependencies | Behaviour |
 | --- | --- | --- |
-| Structural | `map, ready, styleVersion, sourceId, sourceType, layerIdsKey, beforeId` | `addSource` + `addLayer`; teardown removes **layers before source** |
-| Source data | `source` | `setData` for GeoJSON, `updateImage` for images — in place |
-| Style | `layers` | `setPaintProperty` / `setLayoutProperty` / `setFilter` / `setLayerZoomRange`, per changed key |
+| Structural | `map, ready, styleVersion, sourceId, sourceType, layerIdsKey, beforeId` | `addSource` and `addLayer`; teardown removes **layers before the source** |
+| Source data | `source` | `setData` for GeoJSON sources, `updateImage` for image sources — applied in place |
+| Style | `layers` | `setPaintProperty`, `setLayoutProperty`, `setFilter`, `setLayerZoomRange`, per changed key |
 | Draw order | `beforeId, styleVersion` | `moveLayer` |
 
-A full remove-and-re-add happens **only** when the source *type* or the *set of
-layer ids* changes. Changing a fill colour, a filter, or the GeoJSON payload
-never touches the layer's lifecycle.
+A full remove-and-re-add occurs **only** when the source *type* or the *set of
+layer identifiers* changes. Changing a fill colour, a filter expression or the
+GeoJSON payload never affects the layer lifecycle.
 
-The teardown order is not optional: MapLibre refuses to remove a source that a
-layer still references.
+Teardown ordering is a MapLibre requirement: a source cannot be removed while a
+layer still references it.
 
 `applyLayerDiff` compares paint and layout objects key by key, falling back to
-`JSON.stringify` for expression values — which are arrays, so `===` would report
-every render as a change.
+structural comparison for expression values — which are arrays, so reference
+equality would report a change on every render.
 
-## Event handling
+## Event subscription
 
-Handlers live in a ref:
+Handlers are held in a ref:
 
 ```tsx
 handlers.current = { onLoad, onMove, onMouseMove, … };
 ```
 
-Passing an inline arrow to `onMouseMove` would otherwise re-subscribe the
-MapLibre listener on every render. For a handler that fires at pointer rate,
-that is the difference between smooth and unusable.
+Passing an inline arrow function to `onMouseMove` would otherwise re-subscribe
+the MapLibre listener on every render. For a handler invoked at pointer-event
+rate, the difference is material.
 
-## Controlled camera
+## Controlled view state
 
-```tsx
+```ts
 if (Math.abs(current.lng - center[0]) < 1e-6) return;
 ```
 
-Sub-pixel differences are ignored. Without this guard a controlled `center` prop
-fights the user's own panning: they drag, the prop hasn't updated yet, and the
-map snaps back mid-gesture.
+Sub-pixel differences are ignored. Without this guard, a controlled `center`
+prop competes with user panning: the gesture updates the camera, the prop has
+not yet been reconciled, and the map snaps back mid-interaction.
 
-## Resize
+## Container resize
 
-A `ResizeObserver` watches the container. MapLibre only listens for **window**
-resizes, so a map inside a collapsible panel, a split pane or a tab would
-otherwise stay the wrong size indefinitely.
+A `ResizeObserver` monitors the container element. MapLibre observes **window**
+resize only, so a map inside a collapsible panel, a split pane or a tab would
+otherwise retain a stale canvas size indefinitely.

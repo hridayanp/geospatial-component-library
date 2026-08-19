@@ -535,6 +535,17 @@ kbd {
   padding-top: 6px;
 }
 
+/*
+ * A hairline above each top-level section. Reference pages carry a dozen or
+ * more, and the rule separates conceptual prose from API reference material
+ * without adding a visual element that competes with the content.
+ */
+.docs-body > h2:not(:first-child) {
+  margin-top: 52px;
+  padding-top: 26px;
+  border-top: 1px solid var(--docs-border);
+}
+
 .docs-body h3 {
   margin: 34px 0 10px;
   font-size: 18.5px;
@@ -677,6 +688,8 @@ kbd {
   width: 100%;
   border-collapse: collapse;
   font-size: 13.5px;
+  /* Defaults and numeric ranges align column-wise when scanning a prop table. */
+  font-variant-numeric: tabular-nums;
 }
 
 .doc-table th {
@@ -697,6 +710,19 @@ kbd {
   border-bottom: 1px solid var(--docs-border);
   vertical-align: top;
   line-height: 1.6;
+}
+
+/* Column separators: property tables are read across, not down. */
+.doc-table th + th,
+.doc-table td + td {
+  border-left: 1px solid var(--docs-border);
+}
+
+/* Identifiers in a 13.5px cell need no second border competing with the grid. */
+.docs-body .doc-table :not(pre) > code {
+  padding: 1px 4px;
+  border-color: transparent;
+  font-size: 0.9em;
 }
 
 .doc-table tr:last-child td {

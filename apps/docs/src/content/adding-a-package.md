@@ -1,11 +1,22 @@
-Eight steps from empty folder to a package that builds, type-checks, renders in
-Storybook and appears in these docs. Nothing is generated — the shape is small
-enough to copy.
+Eight steps from an empty directory to a package that builds, type-checks,
+renders in Storybook and appears in this documentation. Nothing is generated;
+the structure is small enough to copy.
 
-The fastest start is copying `packages/vector-layer` and deleting its
-implementation. Everything below explains what you are copying.
+The fastest starting point is duplicating `packages/vector-layer` and removing
+its implementation. The steps below describe what that structure contains.
 
-## 1. The folder
+## 0. Establish that it should be a package
+
+Evaluate the proposal against [Design Principles](/docs/principles) first. A new
+package is justified when it introduces a **new heavy dependency** — deck.gl
+justified `deck-overlay` — or when the capability is genuinely useful in
+isolation.
+
+A variation on existing behaviour is a prop. Six variable-specific raster
+components became one `RasterLayer` with a `colorScale` prop, and that
+consolidation is the organising idea of the library.
+
+## 1. Directory structure
 
 ```text
 packages/heatmap-layer/
@@ -25,7 +36,7 @@ packages/heatmap-layer/
 {
   "name": "@hridayanp/heatmap-layer",
   "version": "0.1.0",
-  "description": "Density heatmap layer for point data.",
+  "description": "Kernel density heatmap layer for point observations.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -62,10 +73,10 @@ packages/heatmap-layer/
 }
 ```
 
-> **Warning:** React, MapLibre, deck.gl and WeatherLayers go in
-> `peerDependencies` — never `dependencies`. A second copy of any of them in a
-> consumer's bundle fails at runtime with no build error. Add the same package to
-> `devDependencies` so your own build can resolve it.
+> **Warning:** React, MapLibre, deck.gl and WeatherLayers belong in
+> `peerDependencies`, never in `dependencies`. A second resolution of any of
+> them in a consumer's bundle fails at runtime with no build diagnostic. Declare
+> the same package in `devDependencies` so the local build resolves it.
 
 ## 3. `tsconfig.json`
 
@@ -85,10 +96,13 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm', 'cjs'],
+  outExtension: ({ format }) => ({ js: format === 'cjs' ? '.cjs' : '.js' }),
   dts: true,
   sourcemap: true,
   clean: true,
   treeshake: true,
+  splitting: false,
+  target: 'es2022',
   external: [
     'react',
     'react-dom',
@@ -99,33 +113,39 @@ export default defineConfig({
 });
 ```
 
-`external` must list **every** peer and every `@hridayanp/*` dependency. A missing
-entry inlines that package into your bundle — which is exactly how a consumer
-ends up with two copies of MapLibre.
+`external` must enumerate **every peer dependency and every workspace
+dependency**. An omitted entry causes tsup to inline that module — which is
+precisely how a consumer acquires a second copy of MapLibre.
 
-This is the most common mistake when adding a package, and it produces a build
+This is the most frequent error when adding a package, and it produces a build
 that succeeds and a map that never appears.
 
 ## 5. The component
 
-Attach through the context, and let `useMapSourceLayers` do the reconciliation:
+Resolve the map through context, and delegate reconciliation to
+`useMapSourceLayers`:
 
 ```tsx
+import { useMemo } from 'react';
 import { useMapSourceLayers } from '@hridayanp/map-container';
 import { toFeatureCollection } from '@hridayanp/geo-utils';
+import type { HeatmapLayerProps } from './types';
 
 export function HeatmapLayer({
   id = 'gcl-heatmap',
   data,
   radius = 30,
   intensity = 1,
+  visible = true,
   beforeId,
 }: HeatmapLayerProps) {
   const collection = useMemo(() => toFeatureCollection(data), [data]);
 
   useMapSourceLayers({
     sourceId: `${id}-src`,
-    source: { type: 'geojson', data: collection },
+    source: visible && collection
+      ? { type: 'geojson', data: collection }
+      : null,
     layers: [
       {
         id: `${id}-heat`,
@@ -143,17 +163,17 @@ export function HeatmapLayer({
 }
 ```
 
-Four things that make it behave like the rest of the library:
+Four properties make this consistent with the rest of the library:
 
-- **Returns `null`.** A map layer is not DOM. Only overlays render elements.
-- **`useMapSourceLayers`** handles in-place updates, teardown order and
-  re-attaching after a basemap swap. Calling `map.addLayer` yourself means
+- **Returns `null`.** A map layer is not DOM. Only overlay components render
+  elements.
+- **`useMapSourceLayers`** handles in-place updates, teardown ordering and
+  re-registration after a style reload. Calling `map.addLayer` directly means
   re-implementing all three.
-- **`toFeatureCollection`** normalises whatever GeoJSON shape the host has.
-- **`beforeId`** so a consumer can place it under labels.
+- **`toFeatureCollection`** normalises whichever GeoJSON shape the host holds.
+- **`beforeId`** allows a consumer to place the layer beneath basemap labels.
 
-Read [Design Principles](/docs/principles) before you add a prop. The rule that
-matters most: no fetching, no auth, no application state.
+Passing `source: null` is how `visible={false}` detaches without unmounting.
 
 ## 6. `src/index.ts`
 
@@ -165,30 +185,29 @@ export type { HeatmapLayerProps } from './types';
 The `exports` map seals everything else, so this file **is** the public API. Be
 deliberate about what leaves it.
 
-## 7. Wire it up
+## 7. Wire the workspace
 
 ```bash
-npm install                       # from the root — links the new workspace
-npm run build                     # should include your package, in order
+npm install                       # from the root; links the new workspace
+npm run build                     # the package appears, in dependency order
 npm run typecheck
 ```
 
-No Turborepo configuration is needed; the workspace glob `packages/*` picks it
-up and `dependsOn: ["^build"]` orders it automatically.
+No Turborepo configuration is required: the `packages/*` workspace glob matches
+it and `dependsOn: ["^build"]` orders it automatically.
 
-Add source aliases so both apps compile it from `src` with hot reload:
+Add source aliases so both applications compile it from source with hot reload:
 
 ```ts
 // apps/docs/vite.config.ts and apps/storybook/.storybook/main.ts
 sourceAlias('heatmap-layer'),
 ```
 
-Anchored `^…$`, like the others — an unanchored `map-container` pattern also
-matches `map-controls`.
+Anchored `^…$`, consistent with the others.
 
-## 8. Stories and docs
+## 8. Stories and documentation
 
-**`apps/storybook/src/stories/HeatmapLayer.stories.tsx`**
+**`apps/storybook/stories/HeatmapLayer.stories.tsx`**
 
 ```tsx
 const meta: Meta<typeof HeatmapLayer> = {
@@ -196,15 +215,15 @@ const meta: Meta<typeof HeatmapLayer> = {
   component: HeatmapLayer,
   tags: ['autodocs'],
   argTypes: {
-    // Expression-valued props need an explicit control, or Storybook
-    // infers a colour picker and throws on a non-string value.
+    // Expression-valued props require an explicit control; Storybook's
+    // inference assigns a colour picker and rejects a non-string value.
     color: { control: 'object' },
   },
 };
 ```
 
-Generate story data in the story file. Never fetch — Storybook must render
-offline, and `smoke.mjs` runs every story in a headless browser with no network.
+Generate story data within the story file. Stories must render offline, and
+`smoke.mjs` executes every story in a headless browser with no network access.
 
 **This site.** Add an entry to `PAGES` in `apps/docs/src/site.ts`:
 
@@ -213,41 +232,32 @@ offline, and `smoke.mjs` runs every story in a headless browser with no network.
   slug: 'heatmap-layer',
   title: 'heatmap-layer',
   group: 'Packages',
-  description: 'Density heatmap layer for point data.',
+  description: 'Kernel density heatmap rendering for point observations.',
   storybook: 'geospatial-heatmap-layer',
   npm: '@hridayanp/heatmap-layer',
 },
 ```
 
 Then create `apps/docs/src/content/heatmap-layer.md`. The sidebar, search,
-prev/next navigation, the `npm install` block and the "Live examples in
-Storybook" button all derive from that registry entry — nothing else to wire.
+previous/next navigation, the install command and the Storybook link are all
+derived from that entry; nothing further is wired by hand.
 
-The `storybook` field is the docs id Storybook derives from the story title:
-lowercase, non-alphanumerics to hyphens. `Geospatial/Heatmap Layer` →
-`geospatial-heatmap-layer`.
+The `storybook` field is the docs identifier Storybook derives from the story
+title: lowercased, with non-alphanumeric characters replaced by hyphens.
+`Geospatial/Heatmap Layer` becomes `geospatial-heatmap-layer`.
 
-In development the docs app warns in the console about any registered page with
-no content file.
+In development the documentation application reports, in the console, any
+registered page without a corresponding content file.
 
-## Verify
+## Verification
 
 ```bash
-npm run build            # your package builds, in dependency order
+npm run build            # builds in dependency order
 npm run typecheck
 npm run build-storybook
-node smoke.mjs           # every story renders clean
+node smoke.mjs           # every story renders without error
+node smoke-docs.mjs      # every documentation route renders
 npm pack --workspace @hridayanp/heatmap-layer --dry-run
 ```
 
-The last one should list `dist/` and `README.md` and nothing else.
-
-## Does it need to be a package?
-
-Before any of this — a new package is justified when it introduces a **new heavy
-dependency** (deck.gl earned `deck-overlay`), or when it is genuinely useful on
-its own.
-
-A variation on existing behaviour is a prop. Six per-variable raster components
-became one `RasterLayer` with a `colorScale` prop, and that consolidation is the
-core idea of this library.
+The final command should list `dist/` and `README.md` and nothing else.
