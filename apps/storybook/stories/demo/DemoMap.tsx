@@ -4,18 +4,19 @@ import { MapContainer, type MapContainerProps } from '@hridayanp/map-container';
 import { DEMO_BASEMAP, DEMO_CENTER } from './data';
 
 export interface DemoMapProps extends Omit<MapContainerProps, 'children'> {
-  /** Explanatory line shown above the map. */
+  /** Explanatory line rendered above the map. */
   note?: ReactNode;
   size?: 'short' | 'default' | 'tall';
   children?: ReactNode;
 }
 
 /**
- * The map frame used by every story.
+ * The map frame shared by every story.
  *
- * It exists only to keep the stories themselves focused on the component being
- * documented — the sizing, the basemap and the default camera are noise
- * repeated twenty times otherwise.
+ * It supplies the container sizing, the demonstration basemap and a default
+ * camera, so each story's source shows only the component under documentation.
+ * Individual stories override `center`, `zoom` and `mapStyle` where the dataset
+ * being rendered requires a different view.
  */
 export function DemoMap({
   note,
@@ -40,7 +41,7 @@ export function DemoMap({
   );
 }
 
-/** A plain panel for stories that document something other than a map. */
+/** A plain surface for stories documenting components that require no map. */
 export function DemoSurface({
   note,
   children,

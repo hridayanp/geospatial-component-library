@@ -231,14 +231,29 @@ export const MapContainer = forwardRef<MapContainerHandle, MapContainerProps>(
         });
       }
 
+      // `style.load` has already marked the map ready and bumped the style
+      // version by the time `load` fires; this only surfaces the callback.
       const handleLoad = () => {
         setReady(true);
-        setStyleVersion((v) => v + 1);
         handlers.current.onLoad?.(instance);
       };
-      // `styledata` also fires for the initial load and for every setStyle, so
-      // layer packages can re-attach after a basemap swap.
-      const handleStyleData = () => setStyleVersion((v) => v + 1);
+      // `style.load` fires once per *style*: on the initial load, and again
+      // each time `setStyle` finishes applying a new one. That is exactly the
+      // signal layer packages need in order to re-register after a basemap
+      // change, and it fires whoever called `setStyle` — this component, a
+      // basemap switcher, or the host through `getMap()`.
+      //
+      // `styledata` is deliberately NOT used here. It fires for every style
+      // mutation — `addSource`, `addLayer`, `setPaintProperty`, `updateImage`,
+      // a sprite or tile completing — so incrementing on it would re-run every
+      // layer's structural effect in response to that layer's own update, and
+      // each re-registration would fire `styledata` again. The visible result
+      // is layers flashing continuously as they tear themselves down and
+      // rebuild.
+      const handleStyleLoad = () => {
+        setReady(true);
+        setStyleVersion((v) => v + 1);
+      };
       const handleMove = () => handlers.current.onMove?.(toViewState(instance));
       const handleMoveEnd = () =>
         handlers.current.onMoveEnd?.(toViewState(instance));
@@ -252,8 +267,13 @@ export const MapContainer = forwardRef<MapContainerHandle, MapContainerProps>(
         else console.error('[gcl] MapLibre error:', event.error);
       };
 
+      const styleEvents = instance as unknown as {
+        on(type: string, listener: () => void): void;
+        off(type: string, listener: () => void): void;
+      };
+
       instance.on('load', handleLoad);
-      instance.on('styledata', handleStyleData);
+      styleEvents.on('style.load', handleStyleLoad);
       instance.on('move', handleMove);
       instance.on('moveend', handleMoveEnd);
       instance.on('click', handleClick);
@@ -263,7 +283,7 @@ export const MapContainer = forwardRef<MapContainerHandle, MapContainerProps>(
 
       return () => {
         instance.off('load', handleLoad);
-        instance.off('styledata', handleStyleData);
+        styleEvents.off('style.load', handleStyleLoad);
         instance.off('move', handleMove);
         instance.off('moveend', handleMoveEnd);
         instance.off('click', handleClick);
@@ -348,8 +368,11 @@ export const MapContainer = forwardRef<MapContainerHandle, MapContainerProps>(
       map.setMaxBounds(maxBounds ? toLngLatBounds(maxBounds) : null);
     }, [map, maxBounds]);
 
+    // `setProjection` asserts that the style has finished loading, so this
+    // must wait for `ready`. `styleVersion` is listed as well because a style
+    // replacement resets the projection to the new style's own value.
     useEffect(() => {
-      if (!map || !projection) return;
+      if (!map || !ready || !projection) return;
       const setProjection = (
         map as unknown as {
           setProjection?: (spec: { type: string }) => void;
@@ -362,7 +385,7 @@ export const MapContainer = forwardRef<MapContainerHandle, MapContainerProps>(
         return;
       }
       setProjection.call(map, { type: projection });
-    }, [map, projection]);
+    }, [map, ready, styleVersion, projection]);
 
     useEffect(() => {
       if (!map) return;

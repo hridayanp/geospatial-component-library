@@ -23,6 +23,11 @@ const sourceAlias = (name: string) => ({
 const config: StorybookConfig = {
   stories: ['../stories/**/*.mdx', '../stories/**/*.stories.@(ts|tsx)'],
   addons: ['@storybook/addon-docs', '@storybook/addon-a11y'],
+  // The sample GeoTIFF and GeoJSON datasets in the repository's `assets/`
+  // directory are served under `/assets`, so stories fetch and decode them at
+  // runtime through the same code path a consuming application uses. The
+  // directory is copied into `storybook-static` by `storybook build`.
+  staticDirs: [{ from: resolve(here, '../../../assets'), to: '/assets' }],
   framework: {
     name: '@storybook/react-vite',
     options: {},

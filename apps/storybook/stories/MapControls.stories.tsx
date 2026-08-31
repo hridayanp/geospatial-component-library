@@ -12,15 +12,33 @@ import { RasterLayer } from '@hridayanp/raster-layer';
 import { GeoLegend } from '@hridayanp/geo-legend';
 import { createBlankStyle, createRasterStyle } from '@hridayanp/map-container';
 import { DemoMap } from './demo/DemoMap';
+import { DEMO_BASEMAP, PALETTES } from './demo/data';
 import {
-  DEMO_BASEMAP,
-  DEMO_BOUNDS,
-  DEMO_CENTER,
-  PALETTES,
-  makeRaster,
-} from './demo/data';
+  ASSET_FRAME_KEYS,
+  CONVECTIVE_BOUNDS,
+  CONVECTIVE_VIEW,
+  loadConvectiveRaster,
+} from './demo/assets';
+import { useAsset } from './demo/useAsset';
 
-const raster = makeRaster();
+/**
+ * Style specifications are constructed once at module scope. A specification
+ * rebuilt on every render would change `mapStyle`'s identity and cause
+ * `MapContainer` to call `setStyle` on each render, discarding and re-adding
+ * every layer registered on top of it.
+ */
+const BASEMAPS = [
+  { id: 'blank', label: 'Blank', style: createBlankStyle('#0b1220') },
+  { id: 'osm', label: 'Street', style: DEMO_BASEMAP as never },
+  {
+    id: 'light',
+    label: 'Light',
+    style: createRasterStyle('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      backgroundColor: '#f8fafc',
+    }),
+  },
+];
 
 const meta = {
   title: 'Overlays/Map Controls',
@@ -30,7 +48,9 @@ const meta = {
     docs: {
       description: {
         component: `
-The map controls that are genuinely reusable, and only those.
+The view-state and presentation controls common to any map: zoom, view reset,
+fullscreen, layer opacity and basemap selection, together with a bar that docks
+and groups them.
 
 **Installation**
 
@@ -39,29 +59,65 @@ npm install @hridayanp/map-controls @hridayanp/map-container maplibre-gl react
 import '@hridayanp/ui/styles.css';
 \`\`\`
 
-**What is here**
+### Scope
 
-\`ZoomControl\`, \`ResetViewControl\`, \`FullscreenControl\`, \`OpacityControl\` and
-\`BasemapSwitcher\`, grouped by \`MapControlBar\`.
+The package covers operations that are properties of a map: changing the view,
+framing an extent, expanding the viewport, attenuating a layer, exchanging the
+basemap.
 
-**What is not**
+Layer pickers, site selectors, model-run switchers and advisory panels express
+an application's information architecture rather than a cartographic capability,
+and are therefore outside the package's boundary. \`MapControlBar\` accepts
+arbitrary children, so an application-specific control composed from
+\`@hridayanp/ui\` primitives sits alongside the shipped ones and inherits the
+same visual language.
 
-Layer pickers, site selectors, model switchers, alert panels. Those are
-application concerns — they encode what an application *is*, not what a map
-does, and a component library that shipped them would be shipping someone
-else's product.
+### Components
 
-**Controlled by design**
+\`MapControlBar\` docks and groups controls, and stays transparent to pointer
+events so map panning remains available between groups.
 
-\`OpacityControl\` and \`BasemapSwitcher\` are controlled. Opacity almost always
-belongs to the layer the host already manages; a control holding its own copy
-would immediately disagree with it.
+\`ZoomControl\` tracks the map's own \`minZoom\`/\`maxZoom\` and disables each
+button at the corresponding limit rather than presenting a control that produces
+no effect.
 
-**A note on basemap switching**
+\`ResetViewControl\` restores a defined view; \`bounds\` takes precedence over
+\`view\`, and with neither the control restores the camera the map was mounted
+with.
 
-Swapping a style discards every source and layer added on top of it. Layer
-packages in this library re-attach themselves automatically; anything you added
-by hand has to do the same.
+\`FullscreenControl\` expands the map's own container by default rather than the
+document, so overlays belonging to the map expand with it. It calls
+\`map.resize()\` after the transition completes — resizing during the CSS
+transition captures an intermediate size and distorts the canvas.
+
+\`OpacityControl\` renders a slider, behind a popover by default or \`inline\`
+for embedding in a legend footer.
+
+\`BasemapSwitcher\` takes \`options\` of \`{ id, label, style }\`, a \`value\`
+holding the active option's id, and \`onChange(id, style)\`.
+
+### State ownership
+
+\`OpacityControl\` and \`BasemapSwitcher\` are fully controlled. Layer opacity
+almost always belongs to the layer the host already manages — the same value is
+passed to \`RasterLayer\` — and a control holding an internal copy would diverge
+the moment a preset, a URL parameter or a reset action modified it.
+
+\`ZoomControl\` and \`FullscreenControl\` are different: their state lives on the
+map instance and in the browser respectively, so there is nothing for the host to
+own.
+
+### Basemap reload and layer recovery
+
+Exchanging a style discards every source and style layer added on top of it.
+This is MapLibre behaviour rather than a choice made by this library. Every layer
+package here re-registers automatically on the next loaded style, through the
+\`styleVersion\` counter published by \`MapContainer\`; sources and layers added
+directly by the host must list \`styleVersion\` in their effect dependencies.
+
+\`applyToMap\` defaults to \`false\` for the same reason: when the host passes
+\`mapStyle\` to \`MapContainer\`, enabling it produces two writers contending for
+the same map state.
         `,
       },
     },
@@ -85,46 +141,48 @@ by hand has to do the same.
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A standard control cluster. */
+/** A docked control cluster. */
 export const Basic: Story = {
   args: { placement: 'top-right', orientation: 'vertical' },
   render: (args) => (
-    <DemoMap note="Controls dock to a corner and group into segmented clusters. The bar itself is transparent to pointer events, so the map stays draggable between groups.">
+    <DemoMap {...CONVECTIVE_VIEW} note="MapControlBar docks to one of six positions and groups its children into segmented clusters. The bar is transparent to pointer events, so map panning remains available between groups.">
       <MapControlBar {...args}>
         <ZoomControl />
-        <ResetViewControl bounds={DEMO_BOUNDS} />
+        <ResetViewControl bounds={CONVECTIVE_BOUNDS} />
         <FullscreenControl />
       </MapControlBar>
     </DemoMap>
   ),
 };
 
-/** Laid out horizontally. */
+/** `orientation="horizontal"` lays the cluster out along the x-axis. */
 export const Horizontal: Story = {
   args: { placement: 'top-left', orientation: 'horizontal' },
   render: (args) => (
-    <DemoMap size="short">
+    <DemoMap {...CONVECTIVE_VIEW} size="short">
       <MapControlBar {...args}>
         <ZoomControl />
-        <ResetViewControl view={{ center: DEMO_CENTER, zoom: 5.6 }} />
+        <ResetViewControl view={{ center: CONVECTIVE_VIEW.center, zoom: CONVECTIVE_VIEW.zoom }} />
         <FullscreenControl />
       </MapControlBar>
     </DemoMap>
   ),
 };
 
-/** Opacity, controlled by the host and applied to a layer. */
+/** Layer opacity, owned by the application and applied to the layer. */
 export const Opacity: Story = {
   args: {},
   render: () => {
+    const { value: raster } = useAsset(loadConvectiveRaster);
     const [opacity, setOpacity] = useState(0.85);
     return (
-      <DemoMap note="The slider and the raster read the same state — which is the point of making it controlled.">
+      <DemoMap {...CONVECTIVE_VIEW} note="The slider and the layer read the same value. A control holding an internal copy would diverge the moment a preset, a URL parameter or a reset action modified it.">
         <RasterLayer
           data={raster}
+          frameKey={ASSET_FRAME_KEYS.convective}
           colorScale={[...PALETTES.heat]}
           min={0}
-          max={100}
+          max={50}
           opacity={opacity}
         />
         <MapControlBar placement="top-right">
@@ -132,10 +190,11 @@ export const Opacity: Story = {
           <OpacityControl value={opacity} onChange={setOpacity} />
         </MapControlBar>
         <GeoLegend
-          title="Intensity"
+          title="Convective probability"
           colorScale={[...PALETTES.heat]}
           min={0}
-          max={100}
+          max={50}
+          unit="%"
           placement="bottom-right"
           footer={`Opacity ${Math.round(opacity * 100)}%`}
         />
@@ -144,26 +203,28 @@ export const Opacity: Story = {
   },
 };
 
-/** An inline opacity slider, without the popover. */
+/** `inline` renders the slider directly, without the popover trigger. */
 export const InlineOpacity: Story = {
   args: {},
   render: () => {
+    const { value: raster } = useAsset(loadConvectiveRaster);
     const [opacity, setOpacity] = useState(0.6);
     return (
-      <DemoMap size="short">
+      <DemoMap {...CONVECTIVE_VIEW} size="short">
         <RasterLayer
           data={raster}
+          frameKey={ASSET_FRAME_KEYS.convective}
           colorScale={[...PALETTES.ocean]}
           min={0}
-          max={100}
+          max={50}
           opacity={opacity}
         />
         <GeoLegend
-          title="Rainfall"
+          title="Convective probability"
           colorScale={[...PALETTES.ocean]}
           min={0}
-          max={120}
-          unit="mm"
+          max={50}
+          unit="%"
           placement="bottom-right"
           footer={<OpacityControl inline value={opacity} onChange={setOpacity} />}
         />
@@ -172,73 +233,66 @@ export const InlineOpacity: Story = {
   },
 };
 
-/** Switching basemaps, with layers re-attaching automatically. */
+/** Basemap selection, with layers re-registering automatically. */
 export const Basemaps: Story = {
   args: {},
   render: () => {
-    const options = [
-      { id: 'blank', label: 'Blank', style: createBlankStyle('#0b1220') },
-      { id: 'osm', label: 'Street', style: DEMO_BASEMAP as never },
-      {
-        id: 'light',
-        label: 'Light',
-        style: createRasterStyle('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors',
-          backgroundColor: '#f8fafc',
-        }),
-      },
-    ];
+    const { value: raster } = useAsset(loadConvectiveRaster);
     const [id, setId] = useState('osm');
-    const active = options.find((option) => option.id === id)?.style;
+    const active = BASEMAPS.find((option) => option.id === id)?.style;
 
     return (
       <DemoMap
-        note="Switch the basemap and watch the raster survive it. MapLibre discards everything on a style swap; the layer packages re-attach on the next `styledata` event."
+        {...CONVECTIVE_VIEW}
+        note="MapLibre discards every source and style layer when the style is replaced. Layer packages here re-register on the next loaded style, through the styleVersion counter published by MapContainer."
         mapStyle={active as never}
       >
         <RasterLayer
           data={raster}
+          frameKey={ASSET_FRAME_KEYS.convective}
           colorScale={[...PALETTES.viridis]}
           min={0}
-          max={100}
+          max={50}
           opacity={0.8}
         />
         <MapControlBar placement="top-right">
           <ZoomControl />
         </MapControlBar>
         <div className="gcl-panel--floating gcl-panel--top-left">
-          <BasemapSwitcher options={options} value={id} onChange={setId} />
+          <BasemapSwitcher options={BASEMAPS} value={id} onChange={setId} />
         </div>
       </DemoMap>
     );
   },
 };
 
-/** Every control at once. */
+/** The complete control set on one map. */
 export const FullSet: Story = {
   args: {},
   render: () => {
+    const { value: raster } = useAsset(loadConvectiveRaster);
     const [opacity, setOpacity] = useState(0.85);
     return (
-      <DemoMap size="tall">
+      <DemoMap {...CONVECTIVE_VIEW} size="tall">
         <RasterLayer
           data={raster}
+          frameKey={ASSET_FRAME_KEYS.convective}
           colorScale={[...PALETTES.magma]}
           min={0}
-          max={100}
+          max={50}
           opacity={opacity}
         />
         <MapControlBar placement="top-right">
           <ZoomControl />
           <OpacityControl value={opacity} onChange={setOpacity} />
-          <ResetViewControl bounds={DEMO_BOUNDS} />
+          <ResetViewControl bounds={CONVECTIVE_BOUNDS} />
           <FullscreenControl />
         </MapControlBar>
         <GeoLegend
-          title="Intensity"
+          title="Convective probability"
           colorScale={[...PALETTES.magma]}
           min={0}
-          max={100}
+          max={50}
           ticks={5}
           placement="bottom-right"
         />

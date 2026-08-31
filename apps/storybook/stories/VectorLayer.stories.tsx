@@ -3,16 +3,12 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { VectorLayer, type VectorInteractionInfo } from '@hridayanp/vector-layer';
 import { GeoHoverCard } from '@hridayanp/geo-hover';
 import { DemoMap } from './demo/DemoMap';
-import {
-  makeLines,
-  makeMixedGeometry,
-  makePoints,
-  makePolygons,
-} from './demo/data';
+import { makeLines, makeMixedGeometry, makePolygons } from './demo/data';
+import { CONVECTIVE_VIEW, loadObservations } from './demo/assets';
+import { useAsset } from './demo/useAsset';
 
 const polygons = makePolygons();
 const lines = makeLines();
-const points = makePoints(36);
 const mixed = makeMixedGeometry();
 
 const meta = {
@@ -23,7 +19,8 @@ const meta = {
     docs: {
       description: {
         component: `
-One generic GeoJSON layer for every geometry type.
+Renders GeoJSON of any geometry type on a MapLibre map, with symbology
+configured entirely through props and MapLibre expressions.
 
 **Installation**
 
@@ -31,37 +28,86 @@ One generic GeoJSON layer for every geometry type.
 npm install @hridayanp/vector-layer @hridayanp/map-container maplibre-gl react
 \`\`\`
 
-**Data format**
+### Responsibilities
+
+The component owns GeoJSON normalisation, the source and sub-layer lifecycle,
+geometry-type filtering, symbology application, clustering configuration and
+simplification tolerance. Feature acquisition, attribute joins and the meaning
+of feature properties remain with the consuming application.
+
+### Data model
 
 \`data\` accepts a FeatureCollection, a single Feature, a bare geometry, or an
-array of features. Point, MultiPoint, LineString, MultiLineString, Polygon and
-MultiPolygon all render; a GeometryCollection is traversed for bounds.
+array of features; input is normalised through \`toFeatureCollection\`. Point,
+MultiPoint, LineString, MultiLineString, Polygon and MultiPolygon all render,
+and a GeometryCollection is traversed for extent computation. Coordinates are
+geographic WGS84 (EPSG:4326) in \`[longitude, latitude]\` order, per the GeoJSON
+specification.
 
-**Styling**
+### Rendering model
 
-Every style prop takes either a literal or a MapLibre expression. That is the
-whole mechanism behind per-feature styling — there is no \`getFillColor\`
-callback, because \`['get', 'color']\` does the same job on the GPU:
+One MapLibre \`geojson\` source backs up to five style layers, each filtered to
+the geometry types it can draw:
+
+| Layer id | MapLibre type | Geometry filter |
+| --- | --- | --- |
+| \`{id}-fill\` | \`fill\` | Polygon, MultiPolygon |
+| \`{id}-outline\` | \`line\` | Polygon, MultiPolygon |
+| \`{id}-line\` | \`line\` | LineString, MultiLineString |
+| \`{id}-point\` | \`circle\` | Point, MultiPoint |
+| \`{id}-hit\` | \`circle\` | Point, MultiPoint — only when \`hitRadius > 0\` |
+
+Separate sub-layers are the only mechanism by which MapLibre permits geometry
+types to be styled independently. The decomposition is part of the rendering
+model rather than the configuration surface: the caller configures one
+component. The sub-layer identifiers are public, because \`GeoHover\` is scoped
+by layer id.
+
+### Data-driven symbology
+
+Every style prop accepts a literal **or** a MapLibre expression, typed as
+\`StyleValue<T> = T | unknown[]\`. Expressions are evaluated by MapLibre per
+feature on the GPU, which is why the component exposes no per-feature style
+callback:
 
 \`\`\`tsx
 fill={['coalesce', ['get', 'color'], '#64748b']}
 fillOpacity={['interpolate', ['linear'], ['get', 'intensity'], 0, 0.1, 1, 0.8]}
 \`\`\`
 
-Internally the layer creates separate MapLibre sub-layers per geometry type —
-the only way to style them independently — but they share one source and one
-set of props.
+The layer-level \`opacity\` prop composes with these automatically: literals are
+multiplied directly, expressions are wrapped in \`['*', expr, factor]\`.
 
-**Interaction**
+### Interaction model
 
-\`onHover\`, \`onLeave\` and \`onClick\` receive the picked feature, all features
-under the pointer, the coordinate and the page position. \`hitRadius\` adds an
-invisible, wider target around points so small symbols stay hoverable.
+\`onHover\`, \`onLeave\` and \`onClick\` receive a \`VectorInteractionInfo\`
+carrying the topmost feature, every feature under the pointer, the geographic
+coordinate, the page position and the sub-layer that was hit. The component
+holds no selection or hover state; interaction state is owned entirely by the
+application.
 
-**Limitations**
+### Data used in these stories
 
-- No labels yet; add a MapLibre \`symbol\` layer separately if you need them.
-- Clustering applies to point data only, per the GeoJSON source spec.
+\`assets/vector.geojson\` — 3,190 Point features in EPSG:4326 over the extent
+84.339, 19.590, 90.139, 25.090, carrying numeric attributes
+(\`thunderstorm_prob_pct\`, \`wind_gust_kt\`, \`thunderstorm_distance_km\`) and
+categorical ones (\`thunderstorm_occurrence\`, \`gust_intensity\`). Stories that
+demonstrate polygon and line dispatch use generated geometry, since the sample
+collection contains only points.
+
+### Performance
+
+\`tolerance\` controls Douglas–Peucker simplification at the source. Prefer a
+\`filter\` expression to re-slicing the collection — geometry stays uploaded to
+the GPU and only the draw decision changes. Clustering moves aggregation into
+the source and is substantially cheaper than drawing tens of thousands of
+individual circles.
+
+### Limitations
+
+The component renders no labels; text placement has enough configuration
+surface to warrant a dedicated MapLibre \`symbol\` layer. Clustering applies to
+point geometry only, per the GeoJSON source specification.
         `,
       },
     },
@@ -75,7 +121,7 @@ invisible, wider target around points so small symbols stay hoverable.
     visible: { control: 'boolean' },
     cluster: { control: 'boolean' },
     // These accept a colour *or* a MapLibre expression, so a colour picker
-    // would misreport the array form. Text keeps both honest.
+    // would misreport the array form. A text control keeps both representable.
     fill: { control: 'text' },
     stroke: { control: 'text' },
     pointColor: { control: 'text' },
@@ -88,27 +134,36 @@ invisible, wider target around points so small symbols stay hoverable.
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Polygons with a fill and an outline. */
+/** Point features rendered with a uniform symbology. */
 export const Basic: Story = {
   args: {
-    data: polygons,
-    fill: '#38bdf8',
-    fillOpacity: 0.3,
-    stroke: '#38bdf8',
-    strokeWidth: 1.5,
+    pointRadius: 3,
+    pointColor: '#38bdf8',
+    pointStrokeColor: '#0f172a',
+    pointStrokeWidth: 0.5,
+    opacity: 0.9,
   },
-  render: (args) => (
-    <DemoMap note="Every control below is a live prop.">
-      <VectorLayer {...args} />
-    </DemoMap>
-  ),
+  render: (args) => {
+    const { value: observations } = useAsset(loadObservations);
+    return (
+      <DemoMap
+        {...CONVECTIVE_VIEW}
+        note="3,190 observation points from assets/vector.geojson. Every control below is a live prop on the layer."
+      >
+        <VectorLayer {...args} data={observations} />
+      </DemoMap>
+    );
+  },
 };
 
-/** Polygons, lines and points from one source, styled independently. */
+/**
+ * A single FeatureCollection containing polygon, line and point geometry. The
+ * layer derives one sub-layer per geometry type from the same source.
+ */
 export const GeometryTypes: Story = {
   args: { data: mixed },
   render: (args) => (
-    <DemoMap note="A single FeatureCollection containing Polygon, MultiPolygon, LineString, MultiLineString and Point features.">
+    <DemoMap note="Polygon, MultiPolygon, LineString, MultiLineString and Point features, dispatched to their respective sub-layers and styled independently.">
       <VectorLayer
         {...args}
         fill="#1e40af"
@@ -122,87 +177,127 @@ export const GeometryTypes: Story = {
   ),
 };
 
-/** Each feature styled from its own properties, via expressions. */
+/**
+ * Symbology derived from feature properties through MapLibre expressions,
+ * evaluated per feature on the GPU.
+ */
 export const DataDrivenStyling: Story = {
-  args: { data: polygons },
-  render: (args) => (
-    <DemoMap note="Colour comes from each feature's `color` property; opacity is interpolated from its `intensity`.">
-      <VectorLayer
-        {...args}
-        fill={['coalesce', ['get', 'color'], '#64748b']}
-        fillOpacity={[
-          'interpolate',
-          ['linear'],
-          ['get', 'intensity'],
-          0,
-          0.05,
-          1,
-          0.7,
-        ]}
-        stroke={['coalesce', ['get', 'color'], '#94a3b8']}
-        strokeWidth={2}
-      />
-    </DemoMap>
-  ),
+  args: {},
+  render: () => {
+    const { value: observations } = useAsset(loadObservations);
+    return (
+      <DemoMap
+        {...CONVECTIVE_VIEW}
+        note="Radius interpolates from thunderstorm_prob_pct (0–50) and colour steps through gust intensity classes derived from wind_gust_kt."
+      >
+        <VectorLayer
+          data={observations}
+          pointRadius={[
+            'interpolate',
+            ['linear'],
+            ['get', 'thunderstorm_prob_pct'],
+            0,
+            1.5,
+            50,
+            7,
+          ]}
+          pointColor={[
+            'step',
+            ['get', 'wind_gust_kt'],
+            '#38bdf8',
+            10,
+            '#facc15',
+            15,
+            '#f97316',
+            19,
+            '#dc2626',
+          ]}
+          pointStrokeWidth={0}
+          opacity={0.85}
+        />
+      </DemoMap>
+    );
+  },
 };
 
-/** Outline-only rendering, for boundaries and reference geometry. */
+/**
+ * `fill={false}` omits the fill sub-layer entirely rather than registering one
+ * with zero opacity — appropriate for boundaries and reference geometry.
+ */
 export const OutlineOnly: Story = {
   args: { data: polygons, fill: false, stroke: '#94a3b8', strokeWidth: 1.5 },
   render: (args) => (
     <DemoMap
       size="short"
-      note="`fill={false}` skips the fill sub-layer entirely rather than drawing a transparent one."
+      note="One fewer style layer and one fewer draw call than a transparent fill."
     >
       <VectorLayer {...args} />
     </DemoMap>
   ),
 };
 
-/** Dashed lines. */
+/** `strokeDasharray` is expressed in line widths rather than pixels. */
 export const DashedLines: Story = {
   args: { data: lines, stroke: '#a78bfa', strokeWidth: 2 },
   render: (args) => (
-    <DemoMap size="short">
+    <DemoMap size="short" note="A [3, 2] pattern at a 2px stroke draws 6px dashes separated by 4px gaps.">
       <VectorLayer {...args} strokeDasharray={[3, 2]} />
     </DemoMap>
   ),
 };
 
-/** Hover picking, wired to the readout card from `@hridayanp/geo-hover`. */
+/**
+ * Feature picking. `hitRadius` registers an invisible wider target so small
+ * symbols remain acquirable without being drawn larger.
+ */
 export const Hover: Story = {
-  args: { data: points },
-  render: (args) => {
+  args: {},
+  render: () => {
+    const { value: observations } = useAsset(loadObservations);
     const [info, setInfo] = useState<VectorInteractionInfo | null>(null);
+    const properties = info?.feature.properties ?? null;
     return (
-      <DemoMap note="Hover a point. `hitRadius` widens the target to 14px without changing what is drawn.">
+      <DemoMap
+        {...CONVECTIVE_VIEW}
+        note="The hit sub-layer uses circle-opacity 0.00001 rather than 0, because MapLibre excludes fully transparent geometry from hit testing."
+      >
         <VectorLayer
-          {...args}
-          pointRadius={5}
+          data={observations}
+          pointRadius={3}
           pointColor="#22d3ee"
-          hitRadius={14}
+          pointStrokeWidth={0}
+          hitRadius={12}
           onHover={setInfo}
           onLeave={() => setInfo(null)}
         />
-        {info && (
+        {info && properties && (
           <GeoHoverCard
             x={info.point.x}
             y={info.point.y}
             sections={[
               {
-                title: String(info.feature.properties?.['name'] ?? 'Feature'),
+                title: 'Observation',
+                subtitle: `${info.lngLat[1].toFixed(3)}°, ${info.lngLat[0].toFixed(3)}°`,
                 accentColor: '#22d3ee',
                 rows: [
-                  { label: 'Value', value: Number(info.feature.properties?.['value']) },
                   {
-                    label: 'Speed',
-                    value: Number(info.feature.properties?.['speed']),
+                    label: 'Convective probability',
+                    value: Number(properties['thunderstorm_prob_pct']),
+                    unit: '%',
+                  },
+                  {
+                    label: 'Gust',
+                    value: Number(properties['wind_gust_kt']),
                     unit: 'kt',
                   },
                   {
-                    label: 'Direction',
-                    value: Number(info.feature.properties?.['direction']),
-                    unit: '°',
+                    label: 'Distance to cell',
+                    value: Number(properties['thunderstorm_distance_km']),
+                    unit: 'km',
+                  },
+                  {
+                    label: 'Occurrence',
+                    value: String(properties['thunderstorm_occurrence']),
                   },
                 ],
               },
@@ -214,38 +309,44 @@ export const Hover: Story = {
   },
 };
 
-/** Filtering without re-slicing the data. */
+/**
+ * A `filter` expression changes what draws without re-uploading geometry. The
+ * source retains every feature; only the draw decision changes.
+ */
 export const Filtering: Story = {
-  args: { data: points },
-  render: (args) => {
-    const [threshold, setThreshold] = useState(50);
+  args: {},
+  render: () => {
+    const { value: observations } = useAsset(loadObservations);
+    const [threshold, setThreshold] = useState(10);
     return (
       <div>
         <p className="demo-note">
-          The source keeps all {points.features.length} features; the filter
-          expression decides what draws. Cheaper than handing the map a new
-          FeatureCollection on every change.
+          The source holds all{' '}
+          {observations?.features.length.toLocaleString() ?? '—'} features
+          throughout. Handing the source a new FeatureCollection on every change
+          would re-parse and re-upload the geometry instead.
         </p>
         <label
           className="gcl-row"
-          style={{ marginBottom: 10, fontSize: 12, maxWidth: 320 }}
+          style={{ marginBottom: 10, fontSize: 12, maxWidth: 360 }}
         >
-          value ≥ {threshold}
+          probability ≥ {threshold}%
           <input
             type="range"
             min={0}
-            max={100}
+            max={50}
             value={threshold}
             onChange={(event) => setThreshold(Number(event.target.value))}
             style={{ flex: 1 }}
           />
         </label>
-        <DemoMap size="short">
+        <DemoMap {...CONVECTIVE_VIEW} size="short">
           <VectorLayer
-            {...args}
-            pointRadius={6}
+            data={observations}
+            pointRadius={4}
             pointColor="#f59e0b"
-            filter={['>=', ['get', 'value'], threshold]}
+            pointStrokeWidth={0}
+            filter={['>=', ['get', 'thunderstorm_prob_pct'], threshold]}
           />
         </DemoMap>
       </div>
@@ -253,23 +354,43 @@ export const Filtering: Story = {
   },
 };
 
-/** Clustering, for dense point data. */
+/**
+ * Source-level clustering for dense point data. Cluster features carry a
+ * `point_count` property, addressable from an expression.
+ */
 export const Clustering: Story = {
-  args: { data: makePoints(400, 99) },
-  render: (args) => (
-    <DemoMap note="400 points, clustered at a 50px radius. Zoom in to break the clusters apart.">
-      <VectorLayer {...args} cluster clusterRadius={50} pointRadius={7} pointColor="#34d399" />
-    </DemoMap>
-  ),
+  args: {},
+  render: () => {
+    const { value: observations } = useAsset(loadObservations);
+    return (
+      <DemoMap
+        {...CONVECTIVE_VIEW}
+        note="3,190 points aggregated at a 50px radius. Radius steps with point_count; zooming in dissolves the clusters."
+      >
+        <VectorLayer
+          data={observations}
+          cluster
+          clusterRadius={50}
+          pointRadius={['step', ['get', 'point_count'], 6, 25, 10, 100, 15, 400, 21]}
+          pointColor={['step', ['get', 'point_count'], '#34d399', 100, '#0ea5e9', 400, '#6366f1']}
+          pointStrokeColor="#0f172a"
+          pointStrokeWidth={1}
+        />
+      </DemoMap>
+    );
+  },
 };
 
-/** An empty collection renders nothing. */
+/**
+ * An empty collection is a supported state. The source is still registered, so
+ * features arriving later require no remount.
+ */
 export const EmptyData: Story = {
   args: { data: { type: 'FeatureCollection', features: [] } },
   render: (args) => (
     <DemoMap
       size="short"
-      note="An empty collection is a normal state — the source is still created, so adding features later needs no remount."
+      note="This is also the state during an asynchronous load — `data={null}` behaves identically."
     >
       <VectorLayer {...args} />
     </DemoMap>

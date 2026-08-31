@@ -4,79 +4,122 @@ import { Meta } from '@storybook/addon-docs/blocks';
 
 # @hridayanp geospatial component library
 
-A set of independently installable React packages for building map
-visualisations. Each one does a single thing, takes all of its data through
-props, and can be used on its own or composed with the others.
+A set of independently installable React packages for building interactive
+geospatial visualisations. Each package addresses one rendering capability,
+receives its data through explicit component interfaces, and composes with the
+others through a shared map context.
 
-There is no application in here. No routes, no store, no API client, no
-authentication, no dashboard. A host application owns data retrieval and
-business logic; these packages own rendering.
-
-> **Storybook is the interactive half of the documentation.** The written
-> half — architecture, runtime flow, per-package guides, publishing, invariants
-> and troubleshooting — lives on the documentation site. In development it runs
-> alongside this app at [localhost:3000](http://localhost:3000); in a deployed
-> build it is the root URL, one level up from `/storybook`.
+> **Storybook is the interactive half of the documentation.** The written half —
+> architecture, runtime flow, per-package reference, publishing, invariants and
+> troubleshooting — lives on the documentation site. In development it runs
+> alongside this application at [localhost:3000](http://localhost:3000); in a
+> deployed build it is the root URL, one level above `/storybook`.
 >
 > Run both with `npm run dev` at the workspace root.
 
-## The packages
+## Architectural position
 
-| Package | What it is |
-| --- | --- |
-| `@hridayanp/map-container` | MapLibre map plus the React context layers attach to |
-| `@hridayanp/raster-layer` | Generic raster visualisation with zero-blink frame updates |
-| `@hridayanp/vector-layer` | Generic GeoJSON layer for every geometry type |
-| `@hridayanp/wind-particle-layer` | GPU-animated flow particles (deck.gl + WeatherLayers GL) |
-| `@hridayanp/geo-legend` | Continuous and classed legends |
-| `@hridayanp/geo-hover` | Feature picking, raster probing and a portalled readout card |
-| `@hridayanp/timeline-control` | Frame playback for animated layers |
-| `@hridayanp/map-controls` | Zoom, reset, fullscreen, opacity, basemap |
-| `@hridayanp/deck-overlay` | Bridges deck.gl layers onto a MapLibre map |
-| `@hridayanp/raster-utils` | Raster maths: stats, colour ramps, colourisation, sampling, GeoTIFF |
-| `@hridayanp/geo-utils` | Bounds, geodesy, GeoJSON helpers — zero dependencies |
-| `@hridayanp/ui` | Shared primitives and the one stylesheet |
+The library occupies the **presentation tier** of a geospatial application. It
+accepts georeferenced data through props and emits view-state and interaction
+events through callbacks. Data acquisition, authorisation, transformation and
+application state remain the responsibility of the host.
 
-## Installing
-
-Install only what you use. Every package declares React, MapLibre and deck.gl
-as peer dependencies, so nothing is bundled twice.
-
-```bash
-npm install @hridayanp/map-container @hridayanp/raster-layer maplibre-gl react react-dom
+```text
+Host application                    This library
+─────────────────────────────       ─────────────────────────────
+retrieval and authorisation
+domain transformation          →    normalisation and validation
+caching and scheduling              colourisation and encoding
+application state                   layer and source lifecycle
+                                    GPU rendering and interaction
+                               ←    view state, interaction events
 ```
 
-Import the stylesheet once, anywhere in your application:
+That boundary is what makes one `RasterLayer` serviceable for precipitation
+accumulation, land-surface temperature and probability of exceedance alike: the
+component's contract is a georeferenced grid and a colour ramp, not a domain
+concept.
+
+## Packages
+
+| Package | Responsibility |
+| --- | --- |
+| `@hridayanp/map-container` | MapLibre GL map instance, view state, and the React context every layer resolves |
+| `@hridayanp/raster-layer` | Georeferenced raster rendering with double-buffered frame transitions |
+| `@hridayanp/vector-layer` | GeoJSON rendering across all geometry types with data-driven symbology |
+| `@hridayanp/wind-particle-layer` | GPU flow-field particle advection on deck.gl and WeatherLayers GL |
+| `@hridayanp/geo-legend` | Continuous and classified symbology keys |
+| `@hridayanp/geo-hover` | Feature picking, raster value probing, and a portalled readout card |
+| `@hridayanp/timeline-control` | Temporal frame sequencing and playback |
+| `@hridayanp/map-controls` | View-state controls: zoom, reset, fullscreen, opacity, basemap |
+| `@hridayanp/deck-overlay` | deck.gl interoperability within the MapLibre render pass |
+| `@hridayanp/raster-utils` | Band statistics, colour ramps, colourisation, sampling, GeoTIFF decoding |
+| `@hridayanp/geo-utils` | Extent algebra, geodesy, GeoJSON traversal. No runtime dependencies |
+| `@hridayanp/ui` | Shared interface primitives and the library stylesheet |
+
+## Installation
+
+Install only the packages an application uses. React, MapLibre GL, deck.gl and
+WeatherLayers GL are declared as peer dependencies throughout, so exactly one
+instance of each is resolved per application and no major-version upgrade is
+imposed.
+
+```bash
+npm install @hridayanp/map-container @hridayanp/raster-layer \
+  maplibre-gl react react-dom
+```
+
+Packages that render interface elements depend on one stylesheet, imported once
+at the application entry point:
 
 ```ts
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@hridayanp/ui/styles.css';
 ```
 
-## Composing
+## Composition
 
-Layers attach themselves through context, so composition is just nesting:
+Layer components resolve the enclosing map through React context and register
+their own MapLibre sources and style layers, so composition is expressed as JSX
+nesting. Mount order determines draw order; `beforeId` overrides it where
+thematic data belongs beneath basemap labels.
 
 ```tsx
-<MapContainer center={[92, 25.5]} zoom={6}>
-  <RasterLayer data={raster} colorScale={palette} min={0} max={100} />
-  <VectorLayer data={boundaries} fill={false} stroke="#94a3b8" />
+<MapContainer center={[87.2, 22.3]} zoom={5.4}>
+  <RasterLayer data={raster} frameKey={frameId} colorScale={palette} min={0} max={50} />
+  <VectorLayer data={observations} pointRadius={3} pointColor="#38bdf8" />
   <WindParticleLayer data={{ kind: 'field', u, v, width, height, bounds }} />
 
-  <GeoLegend title="Intensity" colorScale={palette} min={0} max={100} placement="bottom-right" />
-  <TimelineControl frames={frames} index={index} onIndexChange={setIndex} placement="bottom-center" />
+  <GeoLegend title="Convective probability" colorScale={palette} min={0} max={50}
+             unit="%" placement="bottom-right" />
+  <TimelineControl frames={frames} index={index} onIndexChange={setIndex}
+                   placement="bottom-center" />
   <MapControlBar><ZoomControl /><FullscreenControl /></MapControlBar>
-  <GeoHover raster={raster} unit="mm" />
+  <GeoHover raster={raster} title="Probability" unit="%" />
 </MapContainer>
 ```
 
-No package depends on another package's *domain*. The raster layer does not
-know the wind layer exists; the legend works without a map at all.
+No package depends on another package's domain: the raster layer has no
+knowledge that the particle layer exists, and the legend operates without a map.
+
+## Coordinate reference systems
+
+All coordinates crossing the public API are geographic WGS84 (EPSG:4326),
+expressed as `[longitude, latitude]` in decimal degrees. Extents are
+`[west, south, east, north]`, matching the GeoJSON `bbox` convention and
+MapLibre's own ordering. Raster grids are row-major with the northern row first,
+and their `bounds` describe the image edges rather than the centres of the outer
+cells.
+
+Rendering is performed by MapLibre in Web Mercator (EPSG:3857); MapLibre 5 also
+supports a globe projection through `MapContainer`'s `projection` prop. **No
+reprojection is performed by this library** — data in a projected CRS must be
+transformed upstream.
 
 ## Theming
 
-Every colour, radius and font in the library is a CSS custom property. Override
-the variables and everything follows:
+Every colour, radius and font in the library is a CSS custom property. Overriding
+a token propagates to every component that consumes it:
 
 ```css
 :root {
@@ -86,11 +129,29 @@ the variables and everything follows:
 }
 ```
 
-Set `data-gcl-theme="light"` or `"dark"` on any ancestor to switch themes; with
-neither, the library follows the operating system preference.
+Set `data-gcl-theme="light"` or `"dark"` on any ancestor to select a scheme;
+with the attribute absent, the library resolves it from `prefers-color-scheme`.
+The theme toolbar above applies the attribute to this document.
 
-## About the data in these stories
+## Sample data
 
-Every field, feature and flow shown here is generated in the browser by
-`stories/demo/data.ts`. It is deterministic and entirely made up. That is
-deliberate: if the docs needed a backend, the library would too.
+Every story renders one of four datasets in the repository's `assets/`
+directory, fetched and decoded at runtime through the same code path a consuming
+application uses.
+
+| File | Structure | CRS | Extent |
+| --- | --- | --- | --- |
+| `raster.tif` | 58 × 55 single-band float32 grid at 0.1°, convective probability (%) | EPSG:4326 | 84.339, 19.590, 90.139, 25.090 |
+| `vector.geojson` | 3,190 Point features with convective and gust attributes | EPSG:4326 | coincident with `raster.tif` |
+| `wind_particle_raster.tif` | 120 × 128 single-band float32 wind-speed grid at 0.25° (kt) | EPSG:4326 | 67.875, 5.875, 97.875, 37.875 |
+| `wind_particle_vector.geojson` | 15,107 Point observations with speed and bearing | EPSG:4326 | coincident with `wind_particle_raster.tif` |
+
+The GeoTIFFs are decoded with `decodeGeoTIFF` and the GeoJSON is normalised with
+`toFeatureCollection`, so the stories exercise the real decode, normalisation and
+upload path rather than a shortcut. Each dataset is decoded once per session and
+shared across every story.
+
+The sample files record a single analysis time. Stories that document temporal
+playback derive a sequence from the decoded data — preserving grid dimensions,
+extent and the NoData mask — so the rendering path matches a real forecast
+series.

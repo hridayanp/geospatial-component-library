@@ -8,12 +8,25 @@ import {
   rasterToImageData,
   sampleColorScale,
   sampleRaster,
+  type RasterData,
 } from '@hridayanp/raster-utils';
 import { DemoSurface } from './demo/DemoMap';
-import { PALETTES, makeRaster } from './demo/data';
+import { PALETTES } from './demo/data';
+import { loadConvectiveRaster, loadWindSpeedRaster } from './demo/assets';
+import { useAsset } from './demo/useAsset';
 
-const raster = makeRaster();
-const gappy = makeRaster({ noDataFraction: 0.3, seed: 23 });
+/**
+ * A placeholder band, rendered while the sample datasets resolve. Every helper
+ * in this package is synchronous and requires a `RasterData`, so the stories
+ * need a value of that shape rather than a nullable one.
+ */
+const PENDING: RasterData = {
+  data: new Float32Array(1),
+  width: 1,
+  height: 1,
+  bounds: [0, 0, 1, 1],
+  noData: Number.NaN,
+};
 
 const meta = {
   title: 'Utilities/Raster Utilities',
@@ -22,42 +35,73 @@ const meta = {
     docs: {
       description: {
         component: `
-The computational half of raster rendering, with no React and no map anywhere
-in it.
+The computational layer beneath raster rendering: band statistics, colour-ramp
+resolution, colourisation, value sampling and GeoTIFF decoding. No React and no
+map dependency.
 
 **Installation**
 
 \`\`\`bash
 npm install @hridayanp/raster-utils
-npm install geotiff   # optional — only for decodeGeoTIFF
+npm install geotiff   # optional peer — required only for decodeGeoTIFF
 \`\`\`
 
-**Why it is a separate package**
+### Integration boundaries
 
-Everything here is a plain function over plain data. That means it runs in a
-web worker, unit-tests without a browser, and can be reused by a renderer that
-has nothing to do with this library. Keeping it out of the React packages is
-what makes offloading colourisation to a worker a five-line change rather than
-a rewrite.
+Every export is a pure function over typed arrays, so the package executes in a
+web worker, is testable without a browser, and is reusable by a renderer
+unrelated to this library. Keeping it outside the React packages makes moving
+colourisation off the main thread a small, local change rather than a rewrite.
 
-**The colourisation algorithm**
+### Data model
 
-Model grids are coarse. Drawing one pixel per cell and blurring the *coloured*
-result still reads as patchy blocks, because the colour was locked in before
-the blur ran. So \`rasterToImageData\` interpolates the **raw numeric values**
-between neighbouring cells first, and only then maps the smoothly varying
-result through the ramp — via a precomputed 256-entry LUT, because calling a
-colour library once per megapixel is the single biggest cost in the path.
+\`\`\`ts
+interface RasterData {
+  data: RasterArray;   // row-major, northern row first
+  width: number;
+  height: number;
+  bounds: Bounds;      // [west, south, east, north], image EDGES
+  noData?: number | null;
+  unit?: string;
+}
+\`\`\`
 
-Alpha gets the same treatment: a smooth ramp near the bottom of the range
-instead of a hard cutoff, and a partial-coverage fade at the edge of the valid
-region so the raster dissolves rather than showing a rectangle.
+Two conventions govern every function: values are row-major with the northern
+row first, matching image space and GeoTIFF row ordering; and \`bounds\`
+describes the image edges rather than the centres of the outer cells. Cells
+matching \`noData\`, and any \`NaN\`, are excluded from statistics and rendered
+transparent.
 
-**GeoTIFF and COG**
+### Colourisation
 
-\`decodeGeoTIFF(source)\` takes a URL or an \`ArrayBuffer\`. With a URL it uses
-HTTP range requests, so a Cloud-Optimised GeoTIFF only transfers the overview
-you asked for. The library decodes; your application decides how the URL was
+Model grids are coarse relative to display resolution. Rendering one output
+pixel per source cell and blurring the result still reads as a soft mosaic,
+because colour was assigned before the blur was applied.
+
+\`rasterToImageData\` therefore bilinearly interpolates the **raw band values**
+between neighbouring cells first, and maps only the interpolated value through
+the ramp — via a precomputed 256-entry lookup table, since evaluating a colour
+library once per pixel is the largest single cost in the render path. 256 steps
+sit below the perceptual discrimination threshold for a continuous ramp.
+
+Alpha receives the same treatment: \`alphaFade\` applies a \`smoothstep\` ramp
+across a normalised band rather than a hard cutoff, and \`smoothEdges\` feathers
+the coverage boundary so the valid-data region dissolves instead of displaying
+its own rectangular extent. The feather can only reduce alpha, so it cannot make
+transparent NoData regions partially opaque.
+
+### GeoTIFF and Cloud-Optimised GeoTIFF
+
+\`decodeGeoTIFF(source, options)\` accepts a URL or an \`ArrayBuffer\`. With a
+URL, \`geotiff\` issues HTTP range requests, so a Cloud-Optimised GeoTIFF
+transfers only the bytes constituting the requested overview level. Defaulting
+to \`resolution: 'overview'\` is the largest single lever when scrubbing a
+temporal sequence.
+
+Extents are derived from the file's \`ModelTiepoint\` and \`ModelPixelScale\`
+tags. **No reprojection is performed** — a file in a projected CRS yields an
+extent in that CRS's units, which will not register against a WGS84 map. The
+component performs the decode; the application determines how the resource was
 authorised.
         `,
       },
@@ -76,7 +120,7 @@ function RasterCanvas({
   alphaFade,
   width = 320,
 }: {
-  data: typeof raster;
+  data: RasterData;
   smoothFactor: number;
   smoothEdges: boolean;
   colorScale: string[];
@@ -114,16 +158,20 @@ function RasterCanvas({
   );
 }
 
-/** Colourisation, with every knob exposed. */
+/** Colourisation, with every option in `ColorizeOptions` exposed. */
 export const ColorizePlayground: Story = {
   render: () => {
+    const { value: convective } = useAsset(loadConvectiveRaster);
+    const { value: wind } = useAsset(loadWindSpeedRaster);
+    const raster = convective ?? PENDING;
+    const gappy = wind ?? PENDING;
     const [smoothFactor, setSmoothFactor] = useState(6);
     const [smoothEdges, setSmoothEdges] = useState(false);
     const [palette, setPalette] = useState<keyof typeof PALETTES>('heat');
     const [fade, setFade] = useState(true);
 
     return (
-      <DemoSurface note="No map, no React components — just rasterToImageData writing pixels onto a canvas. The chequerboard shows through where alpha is zero.">
+      <DemoSurface note="rasterToImageData writing RGBA pixels onto a canvas, with no map and no layer component involved. The chequerboard shows through where alpha resolves to zero.">
         <div className="gcl-row" style={{ flexWrap: 'wrap', marginBottom: 14 }}>
           <label style={{ fontSize: 12 }}>
             smoothFactor {smoothFactor}
@@ -179,7 +227,9 @@ export const ColorizePlayground: Story = {
             />
           </div>
           <div>
-            <p className="demo-note">With NoData gaps</p>
+            <p className="demo-note">
+              wind_particle_raster.tif — 253 NoData cells of 15,360
+            </p>
             <RasterCanvas
               data={gappy}
               smoothFactor={smoothFactor}
@@ -194,29 +244,33 @@ export const ColorizePlayground: Story = {
   },
 };
 
-/** Statistics, skipping NoData. */
+/** Band statistics over the valid cells. */
 export const Statistics: Story = {
   render: () => {
+    const { value: convective } = useAsset(loadConvectiveRaster);
+    const { value: wind } = useAsset(loadWindSpeedRaster);
+    const raster = convective ?? PENDING;
+    const gappy = wind ?? PENDING;
     const full = computeRasterStats(raster.data, raster.noData);
     const holed = computeRasterStats(gappy.data, gappy.noData);
     return (
-      <DemoSurface note="NoData cells and NaN are excluded from every statistic. A fully-empty band falls back to a 0–1 range rather than returning Infinity, so downstream normalisation stays finite.">
+      <DemoSurface note="NoData cells and NaN are excluded from every statistic. A fully empty band resolves to a 0–1 domain rather than [Infinity, -Infinity], so downstream normalisation stays finite instead of producing NaN pixels.">
         <div className="demo-readout">
-          {`complete   min ${full.min.toFixed(2)}  max ${full.max.toFixed(2)}  mean ${full.mean?.toFixed(2)}  valid ${full.validCount}/${full.totalCount}
-with gaps  min ${holed.min.toFixed(2)}  max ${holed.max.toFixed(2)}  mean ${holed.mean?.toFixed(2)}  valid ${holed.validCount}/${holed.totalCount}`}
+          {`raster.tif                min ${full.min.toFixed(2)}  max ${full.max.toFixed(2)}  mean ${full.mean?.toFixed(2)}  valid ${full.validCount}/${full.totalCount}
+wind_particle_raster.tif  min ${holed.min.toFixed(2)}  max ${holed.max.toFixed(2)}  mean ${holed.mean?.toFixed(2)}  valid ${holed.validCount}/${holed.totalCount}`}
         </div>
       </DemoSurface>
     );
   },
 };
 
-/** Colour ramps: CSS gradients, LUTs and even sampling. */
+/** Ramp resolution: CSS gradients, byte lookup tables and even sampling. */
 export const ColorScales: Story = {
   render: () => {
     const swatches = useMemo(() => sampleColorScale([...PALETTES.heat], 9), []);
     const lut = useMemo(() => buildColorLut([...PALETTES.heat], 8), []);
     return (
-      <DemoSurface note="A ramp resolves to a CSS gradient for legends, a byte LUT for per-pixel colouring, and evenly spaced swatches for classed styling.">
+      <DemoSurface note="One ColorScaleInput resolves to a CSS gradient for a legend, a 256-entry byte lookup table for per-pixel colourisation, and evenly spaced swatches for classified symbology.">
         <div className="gcl-stack">
           {(Object.keys(PALETTES) as Array<keyof typeof PALETTES>).map((name) => (
             <div key={name} className="gcl-row">
@@ -263,17 +317,20 @@ export const ColorScales: Story = {
   },
 };
 
-/** Reading values at coordinates. */
+/** Sampling band values at geographic coordinates. */
 export const Sampling: Story = {
   render: () => {
+    const { value: convective } = useAsset(loadConvectiveRaster);
+    const raster = convective ?? PENDING;
+    // Three positions inside the band's extent, and one outside it.
     const positions: Array<[number, number]> = [
-      [92, 25.5],
-      [90, 24],
-      [94.5, 27.5],
+      [87.2, 22.3],
+      [85.5, 24.1],
+      [89.4, 20.4],
       [200, 200],
     ];
     return (
-      <DemoSurface note="`nearest` returns a value that genuinely exists in the source; `bilinear` matches what the smoothed rendering shows. Off-grid positions return null rather than throwing — hovering off the edge of the data is normal.">
+      <DemoSurface note="`nearest` returns a value that exists in the source grid, which is correct for classified data; `bilinear` interpolates the four surrounding cells and matches what the smoothed rendering displays. Positions outside the extent and cells holding NoData return null rather than raising.">
         <div className="demo-readout">
           {positions
             .map(([lng, lat]) => {

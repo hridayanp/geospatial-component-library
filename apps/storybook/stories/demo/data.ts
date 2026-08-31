@@ -7,12 +7,15 @@ import type { RasterData } from '@hridayanp/raster-utils';
 import type { WindField } from '@hridayanp/wind-particle-layer';
 
 /**
- * Synthetic data for the docs site.
+ * Generated geometry and shared presentation constants.
  *
- * Every value here is generated, deterministic and meaningless — the point is
- * to exercise the components, not to depict anything real. That is also the
- * point of the library: none of these components know or care where the
- * numbers came from.
+ * The stories render the sample datasets in `assets/` wherever those datasets
+ * cover the capability being documented — see `./assets`. This module supplies
+ * what they do not: polygon and line geometry for the geometry-type dispatch
+ * stories, since the sample collections contain only Point features, together
+ * with the demonstration basemap and the shared colour ramps.
+ *
+ * Every generated value is deterministic, so a reload renders identically.
  */
 
 /** The demo extent, `[west, south, east, north]`. */

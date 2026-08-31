@@ -3,7 +3,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TimelineControl, useTimeline } from '@hridayanp/timeline-control';
 import { RasterLayer } from '@hridayanp/raster-layer';
 import { DemoMap, DemoSurface } from './demo/DemoMap';
-import { PALETTES, makeRasterSequence } from './demo/data';
+import { PALETTES } from './demo/data';
+import { CONVECTIVE_VIEW, loadConvectiveRaster } from './demo/assets';
+import { useAsset } from './demo/useAsset';
+import { deriveRasterSequence } from './demo/derive';
 
 const frames = Array.from({ length: 24 }, (_, index) => {
   const timestamp = new Date(
@@ -20,7 +23,8 @@ const meta = {
     docs: {
       description: {
         component: `
-Playback for any sequence of frames.
+Sequences an ordered set of frames and drives playback across them — a raster
+forecast animation, a vector time series, or a stack of pre-rendered images.
 
 **Installation**
 
@@ -29,29 +33,65 @@ npm install @hridayanp/timeline-control react
 import '@hridayanp/ui/styles.css';
 \`\`\`
 
-**Data format**
+### Responsibilities
+
+The component owns the active index, playback state, advance scheduling and the
+scrubber, stepping, speed and counter presentation. Frame acquisition, decoding
+and prefetch remain with the consuming application, as does the interpretation
+of frame content.
+
+Its model is deliberately minimal: there are *N* frames and one is current. It
+holds no knowledge of what the frames contain, where they originated, or whether
+they are chronological — which is what allows one component to drive
+substantively different kinds of sequence.
+
+### Data model
 
 \`frames\` is an array of \`{ id, label?, timestamp?, meta? }\`. Only \`id\` is
-required. Anything else you need to carry — a URL, a raster, a model run — goes
-in \`meta\` and comes back untouched in \`onIndexChange\`.
+required, and it establishes the frame's identity.
 
-**What it knows**
+\`meta\` is typed \`unknown\` deliberately: a URL, a decoded raster, a model-run
+identifier or an entire payload may be attached, and the control passes it
+through without inspection. \`onIndexChange\` receives \`(index, frame)\`, so the
+active frame is available without a second lookup.
 
-That there are N frames and one is current. Not where they came from, not what
-they show, not whether they are even chronological. That is what lets the same
-control drive a raster animation, a vector time series and a set of images.
+An empty \`frames\` array renders a disabled control rather than raising — the
+normal state before data resolves.
 
-**Controlled and uncontrolled**
+### Interaction model
 
-Both \`index\` and \`playing\` work either way, independently. A timeline is often
-driven from two places at once — the control, plus a keyboard shortcut or a URL
-— so the host can own as much of the state as it needs.
+\`index\` and \`playing\` are independently controllable, each with an
+uncontrolled default. A temporal sequence is frequently driven from more than
+one origin — the control, plus a keyboard shortcut, a URL parameter or a
+"jump to latest" action — so separating the two lets the host assume exactly as
+much ownership as it requires.
 
-**Playback timing**
+### Advance scheduling
 
-The advance loop is a self-correcting timer, not \`setInterval\`. A frame that
-overruns its slot does not accumulate drift, so playback keeps its nominal rate
-even when decoding is slow.
+Playback uses a self-correcting timer rather than \`setInterval\`. Each tick
+schedules the next against the expected wall-clock time:
+
+\`\`\`text
+target(n) = start + n * frameDurationMs / speed
+delay     = max(0, target(n + 1) - now)
+\`\`\`
+
+A frame that overruns its interval — because a GeoTIFF was still decoding —
+shortens the subsequent delay rather than displacing every later frame. The
+scheduler does not await layer rendering, so slow frames should be prefetched
+with \`preloadRasterFrame\`.
+
+### Temporal considerations
+
+Default labels are formatted in the viewer's own locale and time zone.
+Meteorological and remote-sensing products are conventionally published in UTC,
+and labelling a valid time in local time without a suffix is a common source of
+operational misreading — supply \`formatLabel\` to fix the convention explicitly.
+
+### The hook
+
+\`useTimeline\` exposes the same behaviour with none of the interface:
+\`{ index, frame, playing, setIndex, next, previous, play, pause, toggle, empty }\`.
         `,
       },
     },
@@ -74,17 +114,17 @@ even when decoding is slow.
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Uncontrolled: the component owns both index and playback. */
+/** Uncontrolled: the component owns both the index and playback state. */
 export const Basic: Story = {
   args: { frames, frameDurationMs: 500, loop: true },
   render: (args) => (
-    <DemoSurface note="Rendered standalone. Timestamps are formatted in the viewer's own locale — a map read across time zones should not silently show someone else's clock.">
+    <DemoSurface note="Rendered standalone. Default labels are formatted in the viewer's own locale and time zone; supply formatLabel to fix a convention such as UTC explicitly.">
       <TimelineControl {...args} />
     </DemoSurface>
   ),
 };
 
-/** Controlled, with the active frame shown alongside. */
+/** Controlled: the application owns the index and receives every change. */
 export const Controlled: Story = {
   args: { frames },
   render: (args) => {
@@ -101,20 +141,20 @@ frame  ${frames[index]?.id ?? '—'}`}
   },
 };
 
-/** With the speed selector enabled. */
+/** `showSpeed` enables the playback-rate selector. */
 export const PlaybackSpeed: Story = {
   args: { frames, showSpeed: true, frameDurationMs: 600 },
   render: (args) => {
     const [speed, setSpeed] = useState(1);
     return (
-      <DemoSurface note="`speed` multiplies the frame duration. The control reports changes; the host decides what to do with them.">
+      <DemoSurface note="`speed` divides the effective frame duration. The control reports a change through onSpeedChange; the application decides whether to adopt it.">
         <TimelineControl {...args} speed={speed} onSpeedChange={setSpeed} />
       </DemoSurface>
     );
   },
 };
 
-/** A minimal scrubber: no buttons, no counter. */
+/** A minimal scrubber, with playback, stepping and the counter removed. */
 export const ScrubberOnly: Story = {
   args: {
     frames,
@@ -124,17 +164,17 @@ export const ScrubberOnly: Story = {
     showTicks: false,
   },
   render: (args) => (
-    <DemoSurface note="Every part of the control is individually removable, for embedding in a tighter layout.">
+    <DemoSurface note="Each region is individually removable, so the control can be embedded in a constrained layout without a custom implementation.">
       <TimelineControl {...args} />
     </DemoSurface>
   ),
 };
 
-/** Custom frame labels. */
+/** `formatLabel` controls the active-frame label. */
 export const CustomLabels: Story = {
   args: { frames },
   render: (args) => (
-    <DemoSurface note="`formatLabel` receives the frame and its index, and can return any node.">
+    <DemoSurface note="Receives the frame and its index, and returns any React node — a formatted valid time, a lead-time offset, or a composed element.">
       <TimelineControl
         {...args}
         formatLabel={(frame, index) => (
@@ -150,33 +190,37 @@ export const CustomLabels: Story = {
   ),
 };
 
-/** An empty timeline disables itself rather than breaking. */
+/** An empty `frames` array renders a disabled control rather than raising. */
 export const EmptyFrames: Story = {
   args: { frames: [] },
   render: (args) => (
-    <DemoSurface note="Zero frames is a normal state while data is loading.">
+    <DemoSurface note="This is the normal state before data resolves, and requires no placeholder from the application.">
       <TimelineControl {...args} />
     </DemoSurface>
   ),
 };
 
-/** Driving a raster animation on a map. */
+/** Driving a raster sequence on a map. */
 export const DrivingARaster: Story = {
   args: { frames: [] },
   render: () => {
-    const sequence = useMemo(() => makeRasterSequence(16), []);
+    const { value: base } = useAsset(loadConvectiveRaster);
+    const sequence = useMemo(
+      () => (base ? deriveRasterSequence(base, 16) : []),
+      [base],
+    );
     const [index, setIndex] = useState(0);
     const active = sequence[index];
 
     return (
-      <DemoMap note="The timeline owns the index; the raster layer owns the rendering. Neither knows about the other.">
+      <DemoMap {...CONVECTIVE_VIEW} note="The timeline owns the index and the layer owns the rendering; the application connects them. Supplying frameKey is what makes a revisited frame a texture swap rather than a re-decode.">
         {active && (
           <RasterLayer
-            data={active.raster}
+            data={active.meta.raster}
             frameKey={active.id}
             colorScale={[...PALETTES.heat]}
             min={0}
-            max={100}
+            max={50}
             opacity={0.88}
           />
         )}
@@ -192,7 +236,7 @@ export const DrivingARaster: Story = {
   },
 };
 
-/** The hook alone, for a completely custom control. */
+/** `useTimeline` exposes the state machine without the interface. */
 export const HookOnly: Story = {
   args: { frames: [] },
   render: () => {
@@ -217,7 +261,7 @@ export const HookOnly: Story = {
     }
 
     return (
-      <DemoSurface note="`useTimeline` gives you the state machine without any of the chrome.">
+      <DemoSurface note="Appropriate for keyboard-driven playback, or when the scrubber belongs elsewhere in the application layout.">
         <CustomTimeline />
       </DemoSurface>
     );
