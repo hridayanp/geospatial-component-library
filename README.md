@@ -29,6 +29,32 @@ business logic; these packages own rendering.
 | [`@hridayanp/geo-utils`](packages/geo-utils) | Bounds, geodesy, GeoJSON helpers — zero dependencies |
 | [`@hridayanp/ui`](packages/ui) | Shared primitives and the one stylesheet |
 
+Comparison and analysis. None of these renders a map — each produces
+`RasterData`, GeoJSON or SVG the layers above already draw:
+
+| Package | Responsibility |
+| --- | --- |
+| [`@hridayanp/map-compare`](packages/map-compare) | Synchronised swipe comparison and small multiples |
+| [`@hridayanp/classified-raster`](packages/classified-raster) | Categorical symbology, latitude-weighted areas, change accounting |
+| [`@hridayanp/hotspot-analysis`](packages/hotspot-analysis) | Getis-Ord Gi* clustering and kernel density estimation |
+| [`@hridayanp/geo-charts`](packages/geo-charts) | Trend projection, class composition, transition matrices |
+
+Meteorological layers, interaction and charts — the same props-in,
+callbacks-out contract:
+
+| Package | Responsibility |
+| --- | --- |
+| [`@hridayanp/contour-layer`](packages/contour-layer) | Isolines traced from a raster with marching squares, drawn and labelled |
+| [`@hridayanp/wind-barb-layer`](packages/wind-barb-layer) | WMO wind barbs and direction arrows, native MapLibre, no deck.gl |
+| [`@hridayanp/data-tile-layer`](packages/data-tile-layer) | Value-encoded data tiles coloured in the browser, A − B difference, exact sampling |
+| [`@hridayanp/heatmap-layer`](packages/heatmap-layer) | GPU point-density heatmap with weighting and a hand-over to points |
+| [`@hridayanp/map-draw`](packages/map-draw) | Drawing, editing and geodesic measurement on terra-draw |
+| [`@hridayanp/map-markers`](packages/map-markers) | React markers and popups, and a click-to-pick point selector |
+| [`@hridayanp/map-widgets`](packages/map-widgets) | Scale bar, cursor coordinates, north arrow, overview inset, place search, ramp picker, loading overlay |
+| [`@hridayanp/map-export`](packages/map-export) | PNG, JPEG and animated GIF export, no runtime dependencies |
+| [`@hridayanp/met-charts`](packages/met-charts) | Skew-T, hodograph, wind rose, meteogram, profile, cross-section, verification scatter |
+| [`@hridayanp/geo-inputs`](packages/geo-inputs) | Latitude/longitude field for every notation, and a bounding-box editor |
+
 ---
 
 ## Quick start
@@ -81,10 +107,21 @@ Host application
   ├── @hridayanp/geo-hover
   ├── @hridayanp/geo-legend
   ├── @hridayanp/map-controls
-  └── @hridayanp/timeline-control
+  ├── @hridayanp/map-compare
+  ├── @hridayanp/timeline-control
+  ├── @hridayanp/contour-layer · wind-barb-layer · data-tile-layer · heatmap-layer
+  ├── @hridayanp/map-draw (terra-draw) · map-markers · map-widgets
+  └── @hridayanp/map-export
                  ↑
         @hridayanp/geo-utils  ·  @hridayanp/ui
+                 ↑                      ↑
+  @hridayanp/classified-raster   @hridayanp/geo-charts ── @hridayanp/met-charts
+  @hridayanp/hotspot-analysis    @hridayanp/geo-inputs
 ```
+
+The analysis packages sit off the render path: they depend on `geo-utils` and
+`raster-utils` only — no React, no MapLibre — so they run in a worker and no
+layer package depends on them.
 
 Principles the codebase actually holds to:
 
@@ -125,7 +162,7 @@ Run them individually with `npm run dev:docs` and `npm run dev:storybook`. The
 docs site links across to Storybook: `/storybook` redirects to the Storybook
 landing page, and each package page has a button through to its stories.
 
-`npm run dev:packages` runs `tsup --watch` across all twelve packages, for when
+`npm run dev:packages` runs `tsup --watch` across all twenty-six packages, for when
 you are consuming them from a separate project. You do not need it for normal
 development — both apps alias `@hridayanp/*` to package source.
 
@@ -152,8 +189,9 @@ npm run build --workspace @hridayanp/raster-layer
 
 ```bash
 npm run build && npm run typecheck
-node smoke.mjs         # renders 22 Storybook stories in headless Chromium
-node smoke-docs.mjs    # renders the home page and all 28 doc routes
+node smoke.mjs         # renders every Storybook story in headless Chromium
+node smoke-docs.mjs    # renders the home page and every doc route
+npm run verify:analysis # asserts the analysis packages compute correct values
 ```
 
 Both smoke tests exist because a type-check proves the code compiles — not that
@@ -161,6 +199,12 @@ a MapLibre map initialises, that deck.gl gets a WebGL context, or that a layer
 attaches without throwing. They fail on any uncaught error, page error or React
 warning; `smoke-docs.mjs` additionally fails on a registered page whose content
 file is missing.
+
+`verify-analysis.mjs` covers what neither can: a wrong number renders as cleanly
+as a right one. It asserts invariants against the built ESM output — area
+conservation across a transition matrix, exact recovery of a known slope,
+the sign of Gi* over a planted cluster — rather than comparing against recorded
+output.
 
 ---
 
@@ -187,7 +231,7 @@ explicitly, and exposes only its public surface.
 Documentation is two applications that link into each other.
 
 **`apps/docs` — the written documentation** (`npm run dev:docs`, port 3000).
-Twenty-eight pages across five sections: Getting Started, Architecture,
+Thirty-two pages across five sections: Getting Started, Architecture,
 Packages, Guides and Reference. Everything in this README plus repository
 anatomy, the dependency graph, runtime flow, the build system, a page per
 package, publishing, adding a package, verification, invariants and

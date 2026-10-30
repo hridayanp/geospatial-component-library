@@ -10,7 +10,7 @@ npm install
 Run this from the **repository root**, not from inside a package.
 
 npm workspaces installs every package's dependencies into a single root
-`node_modules` and symlinks the twelve `@hridayanp/*` packages to one another. A
+`node_modules` and symlinks the twenty-six `@hridayanp/*` packages to one another. A
 change in `geo-utils` is visible to `raster-layer` immediately, with no build, no
 publish and no link step.
 
@@ -25,7 +25,7 @@ publish and no link step.
 npm run dev              # docs site on :3000 and Storybook on :6006
 npm run dev:docs         # docs site only
 npm run dev:storybook    # Storybook only
-npm run dev:packages     # tsup --watch across the twelve packages
+npm run dev:packages     # tsup --watch across the twenty-six packages
 
 npm run build            # every workspace, in dependency order
 npm run typecheck        # tsc --noEmit across every workspace

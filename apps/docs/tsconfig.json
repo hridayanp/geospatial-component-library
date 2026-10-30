@@ -19,7 +19,25 @@
       "@hridayanp/timeline-control": [
         "../../packages/timeline-control/src/index.ts"
       ],
-      "@hridayanp/map-controls": ["../../packages/map-controls/src/index.ts"]
+      "@hridayanp/map-controls": ["../../packages/map-controls/src/index.ts"],
+      "@hridayanp/map-compare": ["../../packages/map-compare/src/index.ts"],
+      "@hridayanp/classified-raster": [
+        "../../packages/classified-raster/src/index.ts"
+      ],
+      "@hridayanp/hotspot-analysis": [
+        "../../packages/hotspot-analysis/src/index.ts"
+      ],
+      "@hridayanp/geo-charts": ["../../packages/geo-charts/src/index.ts"],
+      "@hridayanp/contour-layer": ["../../packages/contour-layer/src/index.ts"],
+      "@hridayanp/wind-barb-layer": ["../../packages/wind-barb-layer/src/index.ts"],
+      "@hridayanp/data-tile-layer": ["../../packages/data-tile-layer/src/index.ts"],
+      "@hridayanp/heatmap-layer": ["../../packages/heatmap-layer/src/index.ts"],
+      "@hridayanp/map-draw": ["../../packages/map-draw/src/index.ts"],
+      "@hridayanp/map-markers": ["../../packages/map-markers/src/index.ts"],
+      "@hridayanp/map-widgets": ["../../packages/map-widgets/src/index.ts"],
+      "@hridayanp/map-export": ["../../packages/map-export/src/index.ts"],
+      "@hridayanp/met-charts": ["../../packages/met-charts/src/index.ts"],
+      "@hridayanp/geo-inputs": ["../../packages/geo-inputs/src/index.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

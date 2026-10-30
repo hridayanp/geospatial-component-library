@@ -57,6 +57,34 @@ concept.
 | `@hridayanp/geo-utils` | Extent algebra, geodesy, GeoJSON traversal. No runtime dependencies |
 | `@hridayanp/ui` | Shared interface primitives and the library stylesheet |
 
+Four further packages address comparison and analysis. None of them renders a
+map: each produces `RasterData`, GeoJSON or SVG that the layer packages above
+already know how to draw.
+
+| Package | Responsibility |
+| --- | --- |
+| `@hridayanp/map-compare` | Synchronised swipe comparison and small multiples |
+| `@hridayanp/classified-raster` | Categorical symbology, latitude-weighted areas, change accounting |
+| `@hridayanp/hotspot-analysis` | Getis-Ord Gi\* clustering and kernel density estimation |
+| `@hridayanp/geo-charts` | Trend projection, class composition, transition matrices |
+
+Ten further packages cover meteorological layers, interaction and charts. Each
+follows the same contract — data in through props, events out through
+callbacks — and none fetches anything the host did not hand it.
+
+| Package | Responsibility |
+| --- | --- |
+| `@hridayanp/contour-layer` | Isolines traced from a raster with marching squares, drawn and labelled |
+| `@hridayanp/wind-barb-layer` | WMO wind barbs and direction arrows, native MapLibre, no deck.gl |
+| `@hridayanp/data-tile-layer` | Value-encoded data tiles coloured in the browser, A − B difference, exact sampling |
+| `@hridayanp/heatmap-layer` | GPU point-density heatmap with weighting and a hand-over to points |
+| `@hridayanp/map-draw` | Drawing, editing and geodesic measurement on terra-draw |
+| `@hridayanp/map-markers` | React markers and popups, and a click-to-pick point selector |
+| `@hridayanp/map-widgets` | Scale bar, cursor coordinates, north arrow, overview inset, place search, ramp picker, loading overlay |
+| `@hridayanp/map-export` | PNG, JPEG and animated GIF export, no runtime dependencies |
+| `@hridayanp/met-charts` | Skew-T, hodograph, wind rose, meteogram, profile, cross-section, verification scatter |
+| `@hridayanp/geo-inputs` | Latitude/longitude field for every notation, and a bounding-box editor |
+
 ## Installation
 
 Install only the packages an application uses. React, MapLibre GL, deck.gl and

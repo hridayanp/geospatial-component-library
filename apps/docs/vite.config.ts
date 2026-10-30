@@ -25,11 +25,11 @@ const sourceAlias = (name: string) => ({
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3001,
+    port: 3000,
     strictPort: false,
   },
   preview: {
-    port: 3001,
+    port: 3000,
   },
   resolve: {
     alias: [
@@ -49,6 +49,20 @@ export default defineConfig({
       sourceAlias('geo-hover'),
       sourceAlias('timeline-control'),
       sourceAlias('map-controls'),
+      sourceAlias('map-compare'),
+      sourceAlias('classified-raster'),
+      sourceAlias('hotspot-analysis'),
+      sourceAlias('geo-charts'),
+      sourceAlias('contour-layer'),
+      sourceAlias('wind-barb-layer'),
+      sourceAlias('data-tile-layer'),
+      sourceAlias('heatmap-layer'),
+      sourceAlias('map-draw'),
+      sourceAlias('map-markers'),
+      sourceAlias('map-widgets'),
+      sourceAlias('map-export'),
+      sourceAlias('met-charts'),
+      sourceAlias('geo-inputs'),
     ],
   },
   build: {

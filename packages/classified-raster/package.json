@@ -1,0 +1,46 @@
+{
+  "name": "@hridayanp/classified-raster",
+  "version": "0.1.0",
+  "description": "Rendering configuration and change accounting for classified rasters: class tables, latitude-weighted class areas, transition matrices and change masks.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "raster",
+    "lulc",
+    "land-cover",
+    "classification",
+    "change-detection",
+    "transition-matrix"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/geo-utils": "^0.1.0",
+    "@hridayanp/raster-utils": "^0.1.0"
+  }
+}

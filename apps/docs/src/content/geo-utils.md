@@ -14,7 +14,7 @@ npm install @hridayanp/geo-utils
 
 Every other `@hridayanp/*` package depends on this one, and it depends on
 nothing. That constraint is deliberate: a dependency added here is a dependency
-added to all twelve packages simultaneously.
+added to all twenty-six packages simultaneously.
 
 The absence of peers also makes it usable outside a browser — in a Node service,
 a web worker, or a host that is not React — so coordinate conventions and extent

@@ -1,4 +1,4 @@
-The twelve `@hridayanp/*` packages are published independently to npm. This is
+The twenty-six `@hridayanp/*` packages are published independently to npm. This is
 the published surface, the versioning model, and the verification sequence
 preceding a release.
 
@@ -98,7 +98,7 @@ peers, imported dynamically at the point of use.
 
 ## Versioning
 
-All twelve packages currently move together at `0.1.0`, with caret ranges
+All twenty-six packages currently move together at `0.1.0`, with caret ranges
 between them:
 
 ```jsonc

@@ -18,6 +18,51 @@ npm install @hridayanp/geo-legend @hridayanp/geo-hover
 npm install @hridayanp/timeline-control @hridayanp/map-controls
 ```
 
+## Comparison and analysis
+
+`map-compare` mounts two or more `MapContainer` instances on one view state:
+
+```bash
+npm install @hridayanp/map-compare @hridayanp/map-container maplibre-gl react
+```
+
+The analysis packages have no React and no MapLibre peer, because they render
+nothing. Each produces data the existing layers already accept:
+
+```bash
+npm install @hridayanp/classified-raster
+npm install @hridayanp/hotspot-analysis
+```
+
+`geo-charts` renders SVG and needs React alone — no map:
+
+```bash
+npm install @hridayanp/geo-charts react
+```
+
+## Meteorological layers, interaction and charts
+
+The meteorological layers need only the map surface — no deck.gl:
+
+```bash
+npm install @hridayanp/contour-layer @hridayanp/wind-barb-layer \
+  @hridayanp/data-tile-layer @hridayanp/heatmap-layer
+```
+
+Interaction and map furniture:
+
+```bash
+npm install @hridayanp/map-draw @hridayanp/map-markers \
+  @hridayanp/map-widgets @hridayanp/map-export
+```
+
+`map-draw` brings `terra-draw` and its MapLibre adapter as ordinary
+dependencies. `met-charts` and `geo-inputs` need React alone:
+
+```bash
+npm install @hridayanp/met-charts @hridayanp/geo-inputs react
+```
+
 ## Flow-field visualisation
 
 `wind-particle-layer` renders through deck.gl and WeatherLayers GL and therefore
@@ -46,6 +91,20 @@ warnings.
 | `geo-legend` | `react` | — |
 | `timeline-control` | `react` | — |
 | `map-controls` | `react`, `maplibre-gl` | — |
+| `map-compare` | `react`, `maplibre-gl` | — |
+| `classified-raster` | — | — |
+| `hotspot-analysis` | — | — |
+| `geo-charts` | `react` | — |
+| `met-charts` | `react` | — |
+| `geo-inputs` | `react` | — |
+| `contour-layer` | `react`, `maplibre-gl` | — |
+| `wind-barb-layer` | `react`, `maplibre-gl` | — |
+| `data-tile-layer` | `react`, `maplibre-gl` | — |
+| `heatmap-layer` | `react`, `maplibre-gl` | — |
+| `map-draw` | `react`, `maplibre-gl` | — |
+| `map-markers` | `react`, `react-dom`, `maplibre-gl` | — |
+| `map-widgets` | `react`, `maplibre-gl` | — |
+| `map-export` | `react`, `maplibre-gl` | — |
 | `geo-hover` | `react`, `react-dom`, `maplibre-gl` | — |
 | `deck-overlay` | `react`, `maplibre-gl`, `@deck.gl/core`, `@deck.gl/mapbox` | — |
 | `wind-particle-layer` | `react`, `maplibre-gl`, `weatherlayers-gl`, `@deck.gl/core`, `@deck.gl/mapbox`, `@deck.gl/extensions`, `@deck.gl/layers` | — |
@@ -69,16 +128,19 @@ the package to install, rather than a module-resolution failure.
 ## Stylesheet
 
 Packages that render interface elements — `ui`, `geo-legend`, `geo-hover`,
-`timeline-control`, `map-controls` — depend on a single stylesheet, imported
-once at the application entry point:
+`timeline-control`, `map-controls`, `map-compare`, `geo-charts`, `met-charts`,
+`geo-inputs`, `map-draw`, `map-markers`, `map-widgets`, `map-export` — depend on a
+single stylesheet, imported once at the application entry point:
 
 ```ts
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@hridayanp/ui/styles.css';
 ```
 
-Layer packages (`raster-layer`, `vector-layer`, `wind-particle-layer`) render no
-DOM and require no stylesheet.
+Layer packages (`raster-layer`, `vector-layer`, `wind-particle-layer`,
+`contour-layer`, `wind-barb-layer`, `data-tile-layer`, `heatmap-layer`) render no
+DOM and require no stylesheet. Neither do `classified-raster` and
+`hotspot-analysis`, which export pure functions only.
 
 > **Note:** The stylesheet is plain CSS scoped to a `gcl-` class namespace and
 > parameterised entirely through CSS custom properties. No build configuration,

@@ -21,6 +21,7 @@
     "build": "turbo run build",
     "build:docs": "npm run build --workspace @hridayanp/docs",
     "typecheck": "turbo run typecheck",
+    "verify:analysis": "node verify-analysis.mjs",
     "clean": "turbo run clean",
     "docs": "npm run dev --workspace @hridayanp/docs",
     "storybook": "npm run dev --workspace @hridayanp/storybook",

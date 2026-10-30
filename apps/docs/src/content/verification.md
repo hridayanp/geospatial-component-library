@@ -1,5 +1,6 @@
-Four verification stages, ordered by what each can detect. The last two are the
-only ones that establish that a map actually renders.
+Five verification stages, ordered by what each can detect. Only the render
+stages establish that a map draws, and only the last establishes that the
+numbers it draws are right.
 
 ```bash
 npm run typecheck        # does it compile?
@@ -7,6 +8,7 @@ npm run build            # does it bundle, with coherent declarations?
 npm run build-storybook  # does the full application build?
 node smoke.mjs           # does it render in a browser?
 node smoke-docs.mjs      # does the documentation render?
+npm run verify:analysis  # are the computed values correct?
 ```
 
 ## 1. Type checking
@@ -32,7 +34,7 @@ The base configuration is `strict`, with `noUnusedLocals`, `noUnusedParameters`,
 npm run build
 ```
 
-Every workspace: twelve `tsup` builds plus the two applications, dependency
+Every workspace: twenty-six `tsup` builds plus the two applications, dependency
 ordered and cached.
 
 Per package this emits `dist/index.js` (ESM), `dist/index.cjs` (CJS),
@@ -80,7 +82,7 @@ so a full production build necessarily runs Storybook first. See
 ## 4. Headless render verification
 
 ```bash
-node smoke.mjs        # 22 Storybook stories
+node smoke.mjs        # every Storybook story
 node smoke-docs.mjs   # the landing page and every documentation route
 ```
 
@@ -101,8 +103,10 @@ article body renders empty, which is how a missing content file presents.
 ✓ geospatial-map-container--basic
 ✓ geospatial-raster-layer--basic
 ✓ geospatial-wind-particle-layer--basic
+✓ analysis-classified-raster--classified-layer
+✓ analysis-hotspot-analysis--cluster-map
 …
-22/22 stories rendered cleanly
+103/103 stories rendered cleanly
 ```
 
 ### Environment configuration
@@ -144,6 +148,39 @@ Two examples, both of which passed type checking:
   values are MapLibre expressions or `[r, g, b, a]` tuples. Resolved by removing
   the matcher and declaring explicit `argTypes`.
 
+## 5. Analytical verification
+
+```bash
+npm run build && npm run verify:analysis
+```
+
+The render stages establish that a chart appears and a layer attaches. They say
+nothing about whether the area under it is correct, and a wrong number renders as
+cleanly as a right one — which makes an analysis package the one place where a
+green render suite is least reassuring.
+
+`verify-analysis.mjs` asserts **invariants** rather than recorded outputs:
+
+| Property | What a failure means |
+| --- | --- |
+| Class areas sum to the extent's area | Latitude weighting is wrong |
+| Transition matrix row and column sums match `classAreas` | Cells are being lost or double-counted |
+| `net = to − from` for every class, and net changes sum to zero | Change accounting does not conserve area |
+| An exact linear series recovers its own slope, intercept and `r² = 1` | The least-squares fit is wrong |
+| Prediction bands widen monotonically with distance from `x̄` | The interval formula is a confidence interval, not a prediction interval |
+| Gi\* is positive over a planted high cluster and negative over a low one | The statistic has a sign or weighting error |
+| FDR thresholds never exceed the uncorrected ones | The correction is loosening rather than tightening |
+| Density is highest at a planted concentration and NoData where nothing was observed | The kernel or the NoData sentinel is wrong |
+
+Each runs against the **built ESM entry points**, so the script also verifies
+that every package exports what its documentation claims.
+
+Invariants are used deliberately in preference to golden outputs. A recorded
+output pins current behaviour, including current mistakes, and has to be
+regenerated whenever anything legitimately changes — at which point it is
+regenerated from the code it exists to check. A conservation law does not have
+that failure mode.
+
 ## Manual verification
 
 Automation does not cover perceptual behaviour:
@@ -154,6 +191,8 @@ Automation does not cover perceptual behaviour:
 - **Style reload.** Change the basemap with layers mounted. Every layer must
   re-register.
 - **Resize.** Drag a split pane, collapse a panel. The canvas must follow.
+- **Comparison panes.** Drag a `CompareMaps` divider. Both panes must stay on
+  the same ground at the same scale, and neither may lag the other.
 - **Both colour schemes.** Toggle `data-gcl-theme` between light and dark.
 - **Keyboard interaction.** Tab to a slider and a popover. Radix handles this,
   but a wrapper can break it.
@@ -170,6 +209,7 @@ npm run typecheck
 npm run build-storybook
 node smoke.mjs
 node smoke-docs.mjs
+npm run verify:analysis
 npm pack --workspace @hridayanp/raster-layer --dry-run
 ```
 
@@ -178,9 +218,13 @@ resolves locally because something else happens to hoist it.
 
 ## Unit test coverage
 
-There is currently none, which is a genuine gap rather than a decision.
+There is no unit test harness. `verify-analysis.mjs` covers
+[`classified-raster`](/docs/classified-raster),
+[`hotspot-analysis`](/docs/hotspot-analysis) and the numerical core of
+[`geo-charts`](/docs/geo-charts); the remaining pure packages are uncovered,
+which is a genuine gap rather than a decision.
 
-The appropriate starting point is [`geo-utils`](/docs/geo-utils) and
+The appropriate next step is [`geo-utils`](/docs/geo-utils) and
 [`raster-utils`](/docs/raster-utils): pure functions over plain data, with no
 React, no DOM and no browser. Extent algebra, compass parsing, UV conversion,
 statistics and sampling are all directly testable, and they are the code the

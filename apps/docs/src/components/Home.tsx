@@ -19,7 +19,7 @@ const HIGHLIGHTS = [
   },
   {
     title: 'Granular package boundaries',
-    body: 'Twelve packages, each independently versioned and publishable. A symbology key for a print report resolves without acquiring a map renderer.',
+    body: 'Twenty-six packages, each independently versioned and publishable. A symbology key for a print report resolves without acquiring a map renderer.',
   },
   {
     title: 'Single-instance runtime guarantee',

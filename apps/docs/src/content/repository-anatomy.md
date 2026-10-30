@@ -12,7 +12,7 @@ geospatial-component-library/
 ├── .gitignore
 ├── smoke.mjs             headless render verification for Storybook
 ├── smoke-docs.mjs        headless render verification for the docs site
-├── packages/             12 publishable packages
+├── packages/             26 publishable packages
 │   ├── geo-utils/
 │   ├── raster-utils/
 │   ├── ui/
@@ -45,7 +45,7 @@ geospatial-component-library/
 ```
 
 The `workspaces` field instructs npm to hoist third-party dependencies to the
-root and to symlink the twelve packages into `node_modules/@hridayanp/`. That
+root and to symlink the twenty-six packages into `node_modules/@hridayanp/`. That
 symlink is why `raster-layer` importing `@hridayanp/geo-utils` resolves to the
 working copy rather than to a registry artefact.
 

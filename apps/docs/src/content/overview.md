@@ -1,7 +1,8 @@
 A component library for building interactive geospatial visualisations in React.
-Twelve packages divide the problem into rendering primitives — a map surface,
-raster and vector layers, GPU flow-field animation, cartographic overlays — each
-independently installable and composable with the rest.
+Twenty-six packages divide the problem into rendering primitives — a map surface,
+raster and vector layers, GPU flow-field animation, cartographic overlays — and
+the analytical operations those primitives exist to present, each independently
+installable and composable with the rest.
 
 ## Architectural position
 
@@ -59,6 +60,34 @@ whose variation is two props.
 | [`raster-utils`](/docs/raster-utils) | Raster statistics, colour ramps, colourisation, sampling, GeoTIFF decoding |
 | [`geo-utils`](/docs/geo-utils) | Extent algebra, geodesy, GeoJSON traversal. No runtime dependencies |
 | [`ui`](/docs/ui) | Shared interface primitives and the library stylesheet |
+
+Four further packages address comparison and analysis. They render nothing of
+their own: each produces `RasterData`, GeoJSON or SVG that the layer packages
+above already know how to draw.
+
+| Package | Responsibility |
+| --- | --- |
+| [`map-compare`](/docs/map-compare) | Synchronised swipe comparison and small multiples |
+| [`classified-raster`](/docs/classified-raster) | Categorical symbology, latitude-weighted areas, change accounting |
+| [`hotspot-analysis`](/docs/hotspot-analysis) | Getis-Ord Gi\* clustering and kernel density estimation |
+| [`geo-charts`](/docs/geo-charts) | Trend projection, class composition, transition matrices |
+
+Ten further packages cover meteorological layers, interaction and charts. Each
+follows the same contract — data in through props, events out through
+callbacks — and none fetches anything the host did not hand it.
+
+| Package | Responsibility |
+| --- | --- |
+| [`contour-layer`](/docs/contour-layer) | Isolines traced from a raster with marching squares, drawn and labelled |
+| [`wind-barb-layer`](/docs/wind-barb-layer) | WMO wind barbs and direction arrows, native MapLibre, no deck.gl |
+| [`data-tile-layer`](/docs/data-tile-layer) | Value-encoded data tiles coloured in the browser, A − B difference, exact sampling |
+| [`heatmap-layer`](/docs/heatmap-layer) | GPU point-density heatmap with weighting and a hand-over to points |
+| [`map-draw`](/docs/map-draw) | Drawing, editing and geodesic measurement on terra-draw |
+| [`map-markers`](/docs/map-markers) | React markers and popups, and a click-to-pick point selector |
+| [`map-widgets`](/docs/map-widgets) | Scale bar, cursor coordinates, north arrow, overview inset, place search, ramp picker, loading overlay |
+| [`map-export`](/docs/map-export) | PNG, JPEG and animated GIF export, no runtime dependencies |
+| [`met-charts`](/docs/met-charts) | Skew-T, hodograph, wind rose, meteogram, profile, cross-section, verification scatter |
+| [`geo-inputs`](/docs/geo-inputs) | Latitude/longitude field for every notation, and a bounding-box editor |
 
 ## Rendering stack
 

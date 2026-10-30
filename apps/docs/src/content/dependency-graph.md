@@ -1,4 +1,4 @@
-Twelve packages arranged as a directed acyclic graph rooted at `geo-utils`, with
+Twenty-six packages arranged as a directed acyclic graph rooted at `geo-utils`, with
 no edges between sibling layer packages.
 
 ## Structure
@@ -16,8 +16,26 @@ no edges between sibling layer packages.
               |        |            |        |
    wind-particle-layer |       geo-hover ────┤
                        |                     |
-                       └──── geo-legend ─────┘
+                       ├──── geo-legend ─────┤
+                       |                     |
+                       └──── map-compare ────┘
 ```
+
+The analysis packages sit off the render path entirely:
+
+```text
+        geo-utils ──┬── classified-raster
+                    |            │
+        raster-utils┘   hotspot-analysis
+
+        ui ──────────── geo-charts
+```
+
+`classified-raster` and `hotspot-analysis` depend on `geo-utils` and
+`raster-utils` and nothing else — no React, no MapLibre. `geo-charts` depends
+only on `ui`. None of the three imports a layer package, and no layer package
+imports them: the analysis packages emit `RasterData` and GeoJSON, and the
+existing layers render it.
 
 ## Resolved dependencies
 
@@ -35,6 +53,20 @@ no edges between sibling layer packages.
 | `geo-hover` | `geo-utils`, `raster-utils`, `map-container`, `ui` | `react`, `react-dom`, `maplibre-gl` |
 | `timeline-control` | `ui` | `react` |
 | `map-controls` | `geo-utils`, `map-container`, `ui` | `react`, `maplibre-gl` |
+| `map-compare` | `geo-utils`, `map-container`, `ui` | `react`, `maplibre-gl` |
+| `classified-raster` | `geo-utils`, `raster-utils` | — |
+| `hotspot-analysis` | `geo-utils`, `raster-utils` | — |
+| `geo-charts` | `ui` | `react` |
+| `contour-layer` | `geo-utils`, `raster-utils`, `map-container` | `react`, `maplibre-gl` |
+| `wind-barb-layer` | `geo-utils`, `map-container` | `react`, `maplibre-gl` |
+| `data-tile-layer` | `raster-utils`, `map-container` | `react`, `maplibre-gl` |
+| `heatmap-layer` | `geo-utils`, `raster-utils`, `map-container` | `react`, `maplibre-gl` |
+| `map-draw` | `geo-utils`, `map-container`, `ui`, `terra-draw`, `terra-draw-maplibre-gl-adapter` | `react`, `maplibre-gl` |
+| `map-markers` | `geo-utils`, `map-container`, `ui` | `react`, `react-dom`, `maplibre-gl` |
+| `map-widgets` | `geo-inputs`, `geo-utils`, `raster-utils`, `map-container`, `ui` | `react`, `maplibre-gl` |
+| `map-export` | `map-container`, `ui` | `react`, `maplibre-gl` |
+| `met-charts` | `geo-charts`, `geo-utils`, `raster-utils`, `ui` | `react` |
+| `geo-inputs` | `geo-utils`, `ui` | `react` |
 
 ## Invariants of the graph
 
@@ -92,6 +124,38 @@ the dependency saving is substantial.
 The same reasoning does not apply to `raster-layer`, which requires the full
 colourisation pipeline.
 
+### Analysis packages render nothing
+
+`classified-raster` and `hotspot-analysis` produce colourised images, class
+statistics and scored features — all of which a map must eventually draw. Giving
+either its own layer component would duplicate the source, layer and
+double-buffering logic that `raster-layer` and `vector-layer` already own, and
+would put a second implementation of the frame swap into the library.
+
+They therefore return `RasterData`, data URLs and GeoJSON in exactly the shapes
+the existing layers accept, and depend on no React and no MapLibre. The
+consequences are worth stating: both run unchanged in a web worker, both are
+testable without a browser, and the invariant that no layer package depends on
+another layer package survives the addition.
+
+`geo-charts` is the mirror image — it renders, but only SVG, and it holds no
+coordinates. It depends on `ui` for the shared tokens and nothing else, so a
+report containing a composition chart pulls in neither MapLibre nor deck.gl.
+
+`met-charts` extends `geo-charts` rather than duplicating it: every
+meteorological chart is drawn inside the same `ChartFrame`, so the table view,
+legend and tokens are one implementation. `geo-inputs` has no map dependency at
+all; `map-widgets` depends on it for coordinate formatting, which keeps one
+parser and one formatter in the library.
+
+The new layer packages — `contour-layer`, `wind-barb-layer`, `data-tile-layer`,
+`heatmap-layer` — each depend on `map-container` and never on one another, so
+the sibling-independence invariant holds. `wind-barb-layer` accepts the same
+`{ kind: 'field' }` and `{ kind: 'points' }` shapes as `wind-particle-layer`
+structurally, without importing it, and so needs no deck.gl. `map-draw` is the
+only new package with a heavy third-party dependency (terra-draw), which is the
+reason it is its own package.
+
 ## Build ordering
 
 Turborepo derives task order from each package's `dependencies` field; no
@@ -99,9 +163,14 @@ ordering is configured:
 
 ```text
 geo-utils ──┬─→ raster-utils ──→ raster-layer ──→ (docs, storybook)
-            ├─→ map-container ─→ vector-layer
-            └─→ …               deck-overlay ──→ wind-particle-layer
-ui ─────────────────────────────→ geo-legend, timeline-control, map-controls
+            ├─→ map-container ─→ vector-layer, map-compare
+            ├─→ …               deck-overlay ──→ wind-particle-layer
+            └─→ raster-utils ──→ classified-raster, hotspot-analysis
+ui ─────────────────────────────→ geo-legend, timeline-control, map-controls,
+                                  geo-charts ──→ met-charts
+map-container ──────────────────→ contour-layer, wind-barb-layer, data-tile-layer,
+                                  heatmap-layer, map-draw, map-markers,
+                                  map-export, map-widgets (after geo-inputs)
 ```
 
 A new package with correctly declared dependencies is inserted into the graph

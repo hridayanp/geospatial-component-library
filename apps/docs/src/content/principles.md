@@ -1,6 +1,6 @@
 Five rules determine what constitutes a package, what constitutes a prop, and
 where the boundary between library and application falls. They are the reason
-twelve packages remain twelve packages rather than collapsing back into one
+twenty-six packages remain twenty-six packages rather than collapsing back into one
 application.
 
 ## 1. Data flows in through props; events flow out through callbacks
@@ -53,6 +53,18 @@ The dependency graph is a directed acyclic graph rooted at `geo-utils`, with
 **Rationale.** Granular boundaries make an 8 KB legend installable for a print
 report without acquiring MapLibre, and prevent a change in particle rendering
 from being able to affect raster rendering.
+
+The rule is what determines the shape of an analysis package. Land-cover change
+accounting and Getis-Ord clustering both end in something drawn on a map, and
+the obvious implementation is a layer per analysis. That would duplicate the
+source, layer and double-buffering logic `raster-layer` already owns, and would
+make the analysis inseparable from React and MapLibre.
+
+[`classified-raster`](/docs/classified-raster) and
+[`hotspot-analysis`](/docs/hotspot-analysis) therefore contain no components at
+all. They emit `RasterData`, data URLs and GeoJSON in the shapes the existing
+layers accept, so the analysis runs in a worker, is testable without a browser,
+and adds no edge between layer packages.
 
 ## 4. Generalise rather than rename
 
