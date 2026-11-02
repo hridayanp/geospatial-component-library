@@ -2,7 +2,13 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { GeoLegend, GeoLegendStack } from '@hridayanp/geo-legend';
 import { RasterLayer } from '@hridayanp/raster-layer';
 import { DemoMap, DemoSurface } from './demo/DemoMap';
-import { PALETTES, makeRaster } from './demo/data';
+import { PALETTES } from './demo/data';
+import {
+  ASSET_FRAME_KEYS,
+  CONVECTIVE_VIEW,
+  loadConvectiveRaster,
+} from './demo/assets';
+import { useAsset } from './demo/useAsset';
 
 const meta = {
   title: 'Overlays/Geo Legend',
@@ -12,7 +18,8 @@ const meta = {
     docs: {
       description: {
         component: `
-A legend for arbitrary geospatial data.
+Renders the symbology key for a map layer: a continuous colour ramp with a
+labelled value domain, or a classified swatch list for categorical data.
 
 **Installation**
 
@@ -21,26 +28,57 @@ npm install @hridayanp/geo-legend react
 import '@hridayanp/ui/styles.css';
 \`\`\`
 
-**Data format**
+### Responsibilities
 
-\`colorScale\` takes bare colours (spread evenly across the range) or explicit
-\`[value, colour]\` stops when the breakpoints carry meaning — a rainfall scale
-with class boundaries at 1, 5, 20 and 60 mm, for instance.
+The component owns ramp resolution, gradient construction, tick placement and
+value formatting, together with placement, collapsing and stacking. Keeping the
+ramp consistent with the layer's \`colorScale\`, and the meaning of the domain
+and unit, remain with the consuming application.
 
-For a categorical legend, pass \`classes\` instead: an array of
-\`{ color, label }\`, which replaces the ramp entirely.
+Cartographic convention treats the legend as part of the map's meaning rather
+than its decoration: a colour ramp without a domain and a unit is
+uninterpretable. Ramp, domain, unit and title are therefore all props, so the
+same component keys precipitation accumulation, probability of exceedance and
+land cover without knowing what any of them are.
 
-**Nothing domain-specific**
+### Data model
 
-A legend is a ramp, a range, a unit and a title. All four are props, so the
-same component labels rainfall, probability and land cover without knowing what
-any of them are.
+\`colorScale\` is a \`LegendColorScale\` — an array of bare colours distributed
+evenly across the domain, or explicit \`[value, colour]\` stops when the
+breakpoints carry meaning. This is the same stop syntax \`RasterLayer\` and
+\`@hridayanp/raster-utils\` accept, so one palette constant can drive both the
+rendering and its key.
 
-**Works without a map**
+For a categorical key, \`classes\` takes an array of
+\`{ color, label, from?, to? }\` and replaces the ramp entirely. Labels are React
+nodes, so they can carry counts, badges or links; with numeric \`from\`/\`to\` and
+no explicit label, the bounds are formatted automatically.
 
-\`GeoLegend\` renders anywhere. Use \`placement\` to dock it inside a
-\`<MapContainer>\`, or omit it and lay the legend out yourself — in a sidebar, a
-print layout, a report.
+### Rendering model
+
+\`mode\` selects between two cartographic representations. \`'continuous'\` draws
+a gradient bar; \`'discrete'\` draws flat bands. The distinction is semantic
+rather than decorative — flat bands communicate classification, a gradient
+communicates a continuum — and should match how the underlying data was
+produced. The same distinction exists on the rendering side as
+\`ColorScale.mode\` in \`@hridayanp/raster-utils\`; the two should agree.
+
+The default \`formatValue\` derives precision from the **domain** rather than
+from the individual value, so a 0–1 probability scale receives two decimal
+places where a 0–1000 pressure scale receives none.
+
+### Integration boundaries
+
+\`GeoLegend\` renders anywhere — inside a \`MapContainer\` via \`placement\`, or
+as an ordinary block element in a sidebar, a print layout or a report. Only
+\`placement\` presumes a positioned ancestor.
+
+The package deliberately does not depend on \`@hridayanp/raster-utils\`: a legend
+requires a CSS gradient and an ordered swatch list, not a colour-science library
+and a GeoTIFF decoder, and carries its own ramp resolver instead.
+
+\`GeoLegendStack\` docks several legends to one corner and keeps the container
+transparent to pointer events, so map panning stays available between them.
         `,
       },
     },
@@ -72,7 +110,7 @@ print layout, a report.
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A continuous ramp with a title, unit and ticks. */
+/** A continuous ramp with a title, a value domain, a unit and ticks. */
 export const Continuous: Story = {
   args: {
     title: 'Accumulated rainfall',
@@ -83,7 +121,7 @@ export const Continuous: Story = {
     ticks: 5,
   },
   render: (args) => (
-    <DemoSurface note="Rendered standalone — no map required.">
+    <DemoSurface note="Rendered standalone. Only `placement` presumes a positioned ancestor, so a legend is usable in a sidebar, a report or a print layout.">
       <div style={{ maxWidth: 260 }}>
         <GeoLegend {...args} />
       </div>
@@ -91,7 +129,7 @@ export const Continuous: Story = {
   ),
 };
 
-/** Discrete mode draws flat bands rather than a gradient. */
+/** `mode="discrete"` draws flat bands in place of a gradient. */
 export const Discrete: Story = {
   args: {
     title: 'Probability',
@@ -103,7 +141,7 @@ export const Discrete: Story = {
     ticks: 6,
   },
   render: (args) => (
-    <DemoSurface note="Flat bands read as classes; a gradient reads as a continuum. The distinction changes how someone interprets the map.">
+    <DemoSurface note="The distinction is semantic: flat bands communicate classification, a gradient communicates a continuum. It should match how the underlying data was produced, and agree with the raster layer's own ColorScale.mode.">
       <div style={{ maxWidth: 260 }}>
         <GeoLegend {...args} />
       </div>
@@ -111,7 +149,7 @@ export const Discrete: Story = {
   ),
 };
 
-/** Explicit classes, for categorical data. */
+/** `classes` replaces the ramp entirely, for categorical symbology. */
 export const Classes: Story = {
   args: {
     title: 'Land cover',
@@ -124,7 +162,7 @@ export const Classes: Story = {
     ],
   },
   render: (args) => (
-    <DemoSurface note="`classes` replaces the ramp with a swatch list. Labels are free-form nodes, so they can carry counts, icons or links.">
+    <DemoSurface note="An ordered swatch list rather than a ramp. Labels are React nodes, so they can carry feature counts, status badges or links.">
       <div style={{ maxWidth: 240 }}>
         <GeoLegend {...args} />
       </div>
@@ -132,7 +170,7 @@ export const Classes: Story = {
   ),
 };
 
-/** Numeric class bounds, labelled automatically. */
+/** Numeric class bounds, formatted automatically. */
 export const ClassBounds: Story = {
   args: {
     title: 'Rainfall class',
@@ -148,7 +186,7 @@ export const ClassBounds: Story = {
     unit: 'mm',
   },
   render: (args) => (
-    <DemoSurface note="With `from`/`to` and no label, the bounds are formatted for you at a precision chosen from the range.">
+    <DemoSurface note="With numeric `from`/`to` and no explicit label, the bounds are formatted at a precision derived from the domain.">
       <div style={{ maxWidth: 240 }}>
         <GeoLegend {...args} />
       </div>
@@ -156,7 +194,7 @@ export const ClassBounds: Story = {
   ),
 };
 
-/** Vertical orientation, for a narrow gutter. */
+/** `orientation="vertical"` renders the ramp as a narrow gutter. */
 export const Vertical: Story = {
   args: {
     title: 'Elevation',
@@ -176,7 +214,7 @@ export const Vertical: Story = {
   ),
 };
 
-/** Custom value formatting. */
+/** `formatValue` overrides the domain-derived default precision. */
 export const CustomFormatting: Story = {
   args: {
     title: 'Pressure',
@@ -188,7 +226,7 @@ export const CustomFormatting: Story = {
     formatValue: (value: number) => `${value.toFixed(0)}`,
   },
   render: (args) => (
-    <DemoSurface note="`formatValue` overrides the default precision — for units, locales, or non-numeric labels.">
+    <DemoSurface note="Appropriate for locale-specific number formatting, non-linear domains, or tick labels that are not numeric at all.">
       <div style={{ maxWidth: 260 }}>
         <GeoLegend {...args} />
       </div>
@@ -196,7 +234,7 @@ export const CustomFormatting: Story = {
   ),
 };
 
-/** Collapsible, with a footer line. */
+/** A collapsible legend with a footer line. */
 export const CollapsibleWithFooter: Story = {
   args: {
     title: 'Intensity',
@@ -207,7 +245,7 @@ export const CollapsibleWithFooter: Story = {
     footer: '01 Jan 2026 06:00 UTC',
   },
   render: (args) => (
-    <DemoSurface note="A footer is the right place for the thing a legend is most often asked for after the scale itself: what time it is showing.">
+    <DemoSurface note="The footer carries the metadata a legend is most often asked for after the scale itself — valid time, model run, or data source.">
       <div style={{ maxWidth: 260 }}>
         <GeoLegend {...args} />
       </div>
@@ -215,60 +253,67 @@ export const CollapsibleWithFooter: Story = {
   ),
 };
 
-/** Docked to a map corner. */
+/** `placement` docks the legend to a corner of the enclosing map. */
 export const OnAMap: Story = {
   args: {
-    title: 'Intensity',
+    title: 'Convective probability',
     colorScale: [...PALETTES.heat],
     min: 0,
-    max: 100,
-    unit: 'index',
+    max: 50,
+    unit: '%',
     ticks: 5,
     placement: 'bottom-right',
   },
-  render: (args) => (
-    <DemoMap note="`placement` docks the legend to a corner of the enclosing map.">
+  render: (args) => {
+    const { value: raster } = useAsset(loadConvectiveRaster);
+    return (
+    <DemoMap {...CONVECTIVE_VIEW} note="Accepted values are top-left, top-center, top-right, bottom-left, bottom-center and bottom-right. Omitting the prop renders the legend as an ordinary block element.">
       <RasterLayer
-        data={makeRaster()}
+        data={raster}
+        frameKey={ASSET_FRAME_KEYS.convective}
         colorScale={[...PALETTES.heat]}
         min={0}
-        max={100}
+        max={50}
         opacity={0.85}
       />
       <GeoLegend {...args} />
     </DemoMap>
-  ),
+    );
+  },
 };
 
-/** Several legends stacked in one corner. */
+/** `GeoLegendStack` docks several legends to one corner. */
 export const Stacked: Story = {
   args: {},
-  render: () => (
-    <DemoMap note="A composed map needs a key per layer. `GeoLegendStack` keeps them in one tidy column instead of fighting for the same corner.">
+  render: () => {
+    const { value: raster } = useAsset(loadConvectiveRaster);
+    return (
+    <DemoMap {...CONVECTIVE_VIEW} note="A composed map requires one key per layer. Docking each legend independently would place them at the same coordinates; the stack also stays transparent to pointer events, so map panning remains available between them.">
       <RasterLayer
-        data={makeRaster()}
+        data={raster}
+        frameKey={ASSET_FRAME_KEYS.convective}
         colorScale={[...PALETTES.ocean]}
         min={0}
-        max={100}
+        max={50}
         opacity={0.8}
       />
       <GeoLegendStack placement="bottom-right">
         <GeoLegend
-          title="Rainfall"
+          title="Convective probability"
           colorScale={[...PALETTES.ocean]}
           min={0}
-          max={120}
-          unit="mm"
+          max={50}
+          unit="%"
         />
         <GeoLegend
-          title="Wind"
+          title="Gust"
           colorScale={['#bae6fd', '#facc15', '#ef4444']}
           min={0}
-          max={40}
+          max={25}
           unit="kt"
         />
         <GeoLegend
-          title="Alerts"
+          title="Advisories"
           classes={[
             { color: '#f59e0b', label: 'Watch' },
             { color: '#ef4444', label: 'Warning' },
@@ -276,5 +321,6 @@ export const Stacked: Story = {
         />
       </GeoLegendStack>
     </DemoMap>
-  ),
+    );
+  },
 };

@@ -41,8 +41,30 @@ const server = createServer(async (request, response) => {
     }
     if (info.isDirectory()) filePath = join(filePath, 'index.html');
     const body = await readFile(filePath);
+    const contentType = MIME[extname(filePath)] ?? 'application/octet-stream';
+
+    // Range support is required, not optional: `geotiff` reads a
+    // Cloud-Optimised GeoTIFF through partial requests and rejects with
+    // "Server responded with full file" against a server that ignores them.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    if (range) {
+      const start = range[1] === '' ? body.length - Number(range[2]) : Number(range[1]);
+      const end = range[1] === '' || range[2] === '' ? body.length - 1 : Number(range[2]);
+      const slice = body.subarray(start, Math.min(end, body.length - 1) + 1);
+      response.writeHead(206, {
+        'content-type': contentType,
+        'content-range': `bytes ${start}-${start + slice.length - 1}/${body.length}`,
+        'accept-ranges': 'bytes',
+        'content-length': String(slice.length),
+      });
+      response.end(slice);
+      return;
+    }
+
     response.writeHead(200, {
-      'content-type': MIME[extname(filePath)] ?? 'application/octet-stream',
+      'content-type': contentType,
+      'accept-ranges': 'bytes',
+      'content-length': String(body.length),
     });
     response.end(body);
   } catch (error) {
@@ -53,30 +75,15 @@ const server = createServer(async (request, response) => {
 
 await new Promise((resolve) => server.listen(PORT, resolve));
 
-const STORIES = [
-  'geospatial-map-container--basic',
-  'geospatial-map-container--fit-bounds',
-  'geospatial-raster-layer--basic',
-  'geospatial-raster-layer--no-data-and-edges',
-  'geospatial-raster-layer--animated-sequence',
-  'geospatial-raster-layer--multiple-rasters',
-  'geospatial-vector-layer--geometry-types',
-  'geospatial-vector-layer--data-driven-styling',
-  'geospatial-vector-layer--clustering',
-  'geospatial-vector-layer--empty-data',
-  'geospatial-wind-particle-layer--basic',
-  'geospatial-wind-particle-layer--from-scattered-points',
-  'geospatial-wind-particle-layer--shared-overlay',
-  'overlays-geo-legend--continuous',
-  'overlays-geo-legend--stacked',
-  'overlays-geo-hover--raster-probe',
-  'overlays-timeline-control--driving-a-raster',
-  'overlays-map-controls--full-set',
-  'utilities-raster-utilities--colorize-playground',
-  'utilities-geo-utilities--range-rings',
-  'composition-examples--raster-vector-and-wind',
-  'composition-examples--full-composition',
-];
+// Every story in the built index, so a newly added story is covered without
+// editing this list. `docs` entries are excluded — they render the same
+// components through the docs viewer, at several times the cost.
+const index = JSON.parse(
+  await readFile(join(ROOT, 'index.json'), 'utf8'),
+);
+const STORIES = Object.values(index.entries)
+  .filter((entry) => entry.type === 'story')
+  .map((entry) => entry.id);
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',

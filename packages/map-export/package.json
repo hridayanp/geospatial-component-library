@@ -1,0 +1,53 @@
+{
+  "name": "@hridayanp/map-export",
+  "version": "0.1.0",
+  "description": "Export a MapLibre map as PNG or JPEG, and record frame sequences to an animated GIF, with no runtime dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "gis",
+    "maplibre",
+    "react",
+    "export",
+    "png",
+    "gif",
+    "screenshot"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/map-container": "^0.1.0",
+    "@hridayanp/ui": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "maplibre-gl": "^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "maplibre-gl": "^5.24.0"
+  }
+}

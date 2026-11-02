@@ -36,6 +36,36 @@
     },
     {
       "path": "./packages/map-controls"
+    },
+    {
+      "path": "./packages/contour-layer"
+    },
+    {
+      "path": "./packages/wind-barb-layer"
+    },
+    {
+      "path": "./packages/data-tile-layer"
+    },
+    {
+      "path": "./packages/heatmap-layer"
+    },
+    {
+      "path": "./packages/map-draw"
+    },
+    {
+      "path": "./packages/map-markers"
+    },
+    {
+      "path": "./packages/map-widgets"
+    },
+    {
+      "path": "./packages/map-export"
+    },
+    {
+      "path": "./packages/met-charts"
+    },
+    {
+      "path": "./packages/geo-inputs"
     }
   ]
 }

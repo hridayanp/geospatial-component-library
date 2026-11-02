@@ -1,0 +1,52 @@
+{
+  "name": "@hridayanp/met-charts",
+  "version": "0.1.0",
+  "description": "Meteorological charts as dependency-free SVG: Skew-T log-P, hodograph, wind rose, meteogram, cross-section profile, forecast verification scatter and sparkline.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "geospatial",
+    "meteorology",
+    "react",
+    "chart",
+    "svg",
+    "skew-t",
+    "hodograph",
+    "wind-rose",
+    "meteogram"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hridayanp/geo-charts": "^0.1.0",
+    "@hridayanp/geo-utils": "^0.1.0",
+    "@hridayanp/raster-utils": "^0.1.0",
+    "@hridayanp/ui": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0"
+  }
+}
